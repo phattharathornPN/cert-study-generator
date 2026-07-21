@@ -272,7 +272,7 @@ html = """<!DOCTYPE html>
     <div id="empty">
       <div class="big">📚</div>
       <div>เลือกหัวข้อจากเมนูเพื่อเริ่มอ่าน</div>
-      <div style="font-size:12.5px">มือถือ: แตะ ☰ · คีย์บอร์ด: ← → เปลี่ยนหัวข้อ</div>
+      <div style="font-size:12.5px">มือถือ: แตะ ☰ · ใช้ปุ่ม ← → ที่แถบบนเพื่อเปลี่ยนหัวข้อ</div>
     </div>
     <div id="pdf-view"><div id="pdf-status"></div><div id="pdf-pages"></div></div>
     <div id="md-view"></div>
@@ -445,13 +445,6 @@ function closeSidebar() {
 document.querySelectorAll('.tab').forEach(b =>
   b.onclick = () => { if (!b.disabled) setView(b.dataset.view); });
 document.getElementById('search').oninput = e => render(e.target.value.toLowerCase());
-document.addEventListener('keydown', e => {
-  // never hijack arrows while typing (search box, notes editor, any editable)
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
-      e.target.isContentEditable) return;
-  if (e.key === 'ArrowLeft') step(-1);
-  if (e.key === 'ArrowRight') step(1);
-});
 
 /* ---------- Notes (IndexedDB) ---------- */
 const notesEditor = document.getElementById('notes-editor');
