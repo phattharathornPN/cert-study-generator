@@ -1,0 +1,40 @@
+# Generated study content -- derived from copyrighted source material you
+# upload yourself. Never commit this; each user generates their own.
+output/
+output_backup*/
+dist/
+index.html
+
+# Source material and compiled derivatives -- never commit copyrighted
+# textbooks/exam guides or the summaries compiled from them.
+*.pdf
+*.docx
+!.github/**/*.pdf
+
+# This repo's own CCNP-specific run history / local tooling config --
+# useful to the original author, not to someone reusing this as a template.
+CLAUDE.md
+NOTE.md
+MAP_OCG.md
+PLAN_109_TOPICS.md
+PROMPTS_FOR_NOTEBOOKLM.md
+.claude/
+
+# Secrets
+.env
+
+# Node (wrangler)
+node_modules/
+.wrangler/
+
+# Generated / cache files (regenerate anytime with the scripts)
+slide_instructions.json
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

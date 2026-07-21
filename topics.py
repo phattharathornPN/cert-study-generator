@@ -1,0 +1,142 @@
+# -*- coding: utf-8 -*-
+"""Topic list for this study pack.
+
+THIS IS THE FILE YOU EDIT to reuse the pipeline for a different
+certification. Replace TOPICS below with your own exam's topic
+breakdown. Keep the same shape: a list of {"id": "SS_NN", "topic": "..."}
+dicts, grouped by section with the id prefix "SS" matching the section
+number (used for folder naming and the website's sidebar grouping).
+"""
+
+TOPICS = [
+    # -- Section 01: Enterprise LAN Architecture --
+    {"id": "01_01", "topic": "Cisco Enterprise Network Model"},
+    {"id": "01_02", "topic": "2-Tier, 3-Tier, Spine-Leaf (Fabric) and Cloud Design"},
+    {"id": "01_03", "topic": "Campus LAN Design Fundamental"},
+    {"id": "01_04", "topic": "Traditional Multilayer Campus Layer Design"},
+    {"id": "01_05", "topic": "Campus Distribution Layer Design"},
+    {"id": "01_06", "topic": "High Availability: SSO, NSF, Graceful Restart"},
+    {"id": "01_07", "topic": "Process Switching, Fast Switching, CEF"},
+    {"id": "01_08", "topic": "CEF Deep Dive: FIB and Adjacency Table"},
+    {"id": "01_09", "topic": "VLAN and Inter-VLAN Routing"},
+    {"id": "01_10", "topic": "Dynamic Trunking Protocol (DTP)"},
+    {"id": "01_11", "topic": "RSTP, MSTP, PortFast, BPDUGuard, Root Guard"},
+    {"id": "01_12", "topic": "RSTP and MSTP Fundamentals"},
+    {"id": "01_13", "topic": "STP Protection Features: PortFast, BPDU Guard, Root Guard"},
+    {"id": "01_14", "topic": "Layer 2 EtherChannel"},
+    {"id": "01_15", "topic": "LACP and PAgP EtherChannel Negotiation"},
+    {"id": "01_16", "topic": "HSRP and VRRP"},
+    {"id": "01_17", "topic": "Policy-Based Routing (PBR)"},
+    {"id": "01_18", "topic": "SDM Templates"},
+    {"id": "01_19", "topic": "VTP (VLAN Trunking Protocol)"},
+    {"id": "01_20", "topic": "GLBP (Gateway Load Balancing Protocol)"},
+
+    # -- Section 02: Enterprise Routing Network --
+    {"id": "02_01", "topic": "Routing Concepts"},
+    {"id": "02_02", "topic": "Understanding EIGRP"},
+    {"id": "02_03", "topic": "EIGRP DUAL Algorithm and Feasibility Condition"},
+    {"id": "02_04", "topic": "Implementing OSPFv2"},
+    {"id": "02_05", "topic": "Implementing OSPFv3 (IPv6)"},
+    {"id": "02_06", "topic": "Optimizing OSPF"},
+    {"id": "02_07", "topic": "OSPF Area Types and Summarization"},
+    {"id": "02_08", "topic": "OSPF LSA Types"},
+    {"id": "02_09", "topic": "EIGRP vs OSPF Comparison"},
+    {"id": "02_10", "topic": "Enterprise Internet Connectivity"},
+    {"id": "02_11", "topic": "Implementing NAT and PAT"},
+    {"id": "02_12", "topic": "Exploring eBGP"},
+    {"id": "02_13", "topic": "BGP Best Path Selection Algorithm"},
+    {"id": "02_14", "topic": "Static Routing, Route Maps and Prefix Lists"},
+    {"id": "02_15", "topic": "DHCP and DHCP Relay"},
+
+    # -- Section 03: Virtualization Technologies --
+    {"id": "03_01", "topic": "Network and Server Virtualization"},
+    {"id": "03_02", "topic": "Hypervisor Type 1 and Type 2"},
+    {"id": "03_03", "topic": "Virtual Machine and Virtual Switching"},
+    {"id": "03_04", "topic": "Implementing VRF Lite"},
+    {"id": "03_05", "topic": "Implementing GRE Tunneling"},
+    {"id": "03_06", "topic": "IPsec Tunneling"},
+    {"id": "03_07", "topic": "Site-to-Site VPN Technologies"},
+    {"id": "03_08", "topic": "LISP Overview (Control Plane Concepts)"},
+    {"id": "03_09", "topic": "VXLAN Overview (Data Plane Concepts)"},
+    {"id": "03_10", "topic": "Containers vs Virtual Machines"},
+
+    # -- Section 04: Enterprise Wireless Architecture --
+    {"id": "04_01", "topic": "Wireless Principles and Standards"},
+    {"id": "04_02", "topic": "Wireless Deployment Options"},
+    {"id": "04_03", "topic": "Wireless Roaming and Location Services"},
+    {"id": "04_04", "topic": "Wireless AP Operation"},
+    {"id": "04_05", "topic": "Wireless Client Authentication"},
+    {"id": "04_06", "topic": "Troubleshooting Wireless Client Connectivity"},
+
+    # -- Section 05: Network Services --
+    {"id": "05_01", "topic": "Introducing Multicast Protocols"},
+    {"id": "05_02", "topic": "Multicast: RPF Check, PIM SM, IGMP v2/v3, SSM, Bidir, MSDP"},
+    {"id": "05_03", "topic": "Multicast Deep Dive: RPF Check and PIM Sparse Mode"},
+    {"id": "05_04", "topic": "Multicast Deep Dive: IGMP v2/v3 and SSM"},
+    {"id": "05_05", "topic": "Multicast Deep Dive: Bidir-PIM and MSDP"},
+    {"id": "05_06", "topic": "Introducing QoS"},
+    {"id": "05_07", "topic": "Interpret QoS Configurations"},
+    {"id": "05_08", "topic": "QoS: Traffic Shaping vs Policing"},
+    {"id": "05_09", "topic": "NTP and PTP (Precision Time Protocol)"},
+    {"id": "05_10", "topic": "Syslog, SNMP, NetFlow and FNF"},
+    {"id": "05_11", "topic": "Syslog and SNMP Deep Dive"},
+    {"id": "05_12", "topic": "NetFlow and Flexible NetFlow Deep Dive"},
+    {"id": "05_13", "topic": "Configuring Cisco IOS EEM Applet"},
+    {"id": "05_14", "topic": "Network Troubleshooting Tools and Concepts"},
+    {"id": "05_15", "topic": "Ping, Traceroute, Debug and Conditional Debug"},
+    {"id": "05_16", "topic": "Cisco IOS IP SLAs"},
+    {"id": "05_17", "topic": "SPAN, RSPAN and ERSPAN"},
+
+    # -- Section 06: Enterprise Security Architecture --
+    {"id": "06_01", "topic": "Use ACL to Filter Network Traffic"},
+    {"id": "06_02", "topic": "Implementing Control Plane Policing (CoPP)"},
+    {"id": "06_03", "topic": "AAA Framework"},
+    {"id": "06_04", "topic": "RADIUS and TACACS+"},
+    {"id": "06_05", "topic": "Lines and Local User Authentication"},
+    {"id": "06_06", "topic": "Threats Overview"},
+    {"id": "06_07", "topic": "Zero Trust Architecture"},
+    {"id": "06_08", "topic": "SASE (Secure Access Service Edge) Concepts"},
+    {"id": "06_09", "topic": "Cisco ISE Overview and Micro-Segmentation"},
+    {"id": "06_10", "topic": "Cisco ISE Platform Deep Dive"},
+    {"id": "06_11", "topic": "Micro-Segmentation with Cisco ISE"},
+    {"id": "06_12", "topic": "Endpoint Security"},
+    {"id": "06_13", "topic": "Firewall and Next-Generation Firewall (NGFW) Concepts"},
+    {"id": "06_14", "topic": "REST API Security"},
+    {"id": "06_15", "topic": "MACSec (IEEE 802.1AE) and TrustSec Overview"},
+    {"id": "06_16", "topic": "MACsec Deep Dive: 802.1AE Encryption"},
+    {"id": "06_17", "topic": "TrustSec Deep Dive: Security Group Tags (SGT)"},
+    {"id": "06_18", "topic": "802.1X for Wired and Wireless"},
+    {"id": "06_19", "topic": "MAC Authentication Bypass (MAB)"},
+    {"id": "06_20", "topic": "Web Authentication"},
+
+    # -- Section 07: Automation and Assurance --
+    {"id": "07_01", "topic": "Cisco Catalyst Center Architecture"},
+    {"id": "07_02", "topic": "Cisco Catalyst Center Assurance"},
+    {"id": "07_03", "topic": "Cisco Catalyst Center Workflow"},
+    {"id": "07_04", "topic": "AI-Powered Network Monitoring and Management"},
+    {"id": "07_05", "topic": "Cisco Catalyst Center APIs"},
+    {"id": "07_06", "topic": "Cisco SD-Access Solution"},
+    {"id": "07_07", "topic": "Fabric Control Plane based on LISP"},
+    {"id": "07_08", "topic": "Fabric Data Plane based on VXLAN"},
+    {"id": "07_09", "topic": "Fabric Policy Plane based on TrustSec"},
+    {"id": "07_10", "topic": "Cisco SD-Access Components"},
+    {"id": "07_11", "topic": "Traditional Campus Interoperating with SD-Access"},
+    {"id": "07_12", "topic": "Principles of Cisco Catalyst SD-WAN Solution"},
+    {"id": "07_13", "topic": "Cisco SD-WAN Components"},
+    {"id": "07_14", "topic": "Cisco SD-WAN Orchestration Plane"},
+    {"id": "07_15", "topic": "Cisco SD-WAN Management Plane"},
+    {"id": "07_16", "topic": "Cisco SD-WAN Control and Data Plane Elements"},
+    {"id": "07_17", "topic": "Cisco SD-WAN Automation and Analytics"},
+    {"id": "07_18", "topic": "SD-WAN Manager APIs (formerly vManage)"},
+    {"id": "07_19", "topic": "Cisco Catalyst SD-WAN: Benefits and Limitations"},
+
+    # -- Section 08: Network Programmability --
+    {"id": "08_01", "topic": "Python Concepts and Data Types"},
+    {"id": "08_02", "topic": "Data Encoding and JSON Format"},
+    {"id": "08_03", "topic": "YANG Data Model"},
+    {"id": "08_04", "topic": "NETCONF and RESTCONF"},
+    {"id": "08_05", "topic": "REST API Response Codes and Payload Interpretation"},
+    {"id": "08_06", "topic": "APIs in Cisco Catalyst Center and SD-WAN Manager"},
+    {"id": "08_07", "topic": "EEM Applet for Automation and Troubleshooting"},
+    {"id": "08_08", "topic": "Agent vs Agentless Orchestration Tools"},
+]

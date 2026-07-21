@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "docx": "^9.7.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.110.0"
+  },
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
+  }
+}
