@@ -356,6 +356,7 @@ function render(filter) {
 
 /* ---------- Selection ---------- */
 function select(i, skipSave) {
+  if (typeof flushNotesSave === 'function') flushNotesSave();
   current = i;
   const t = DATA.topics[i];
   document.getElementById('topic-title').textContent = '[' + t.id + '] ' + t.title;
@@ -445,7 +446,9 @@ document.querySelectorAll('.tab').forEach(b =>
   b.onclick = () => { if (!b.disabled) setView(b.dataset.view); });
 document.getElementById('search').oninput = e => render(e.target.value.toLowerCase());
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
+  // never hijack arrows while typing (search box, notes editor, any editable)
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+      e.target.isContentEditable) return;
   if (e.key === 'ArrowLeft') step(-1);
   if (e.key === 'ArrowRight') step(1);
 });
@@ -500,15 +503,27 @@ async function loadNotesFor(tid) {
   notesEditor.innerHTML = html;
   notesStatus.textContent = '';
 }
+let notesPendingTid = null;
 function scheduleNotesSave() {
   if (current < 0) return;
   const tid = DATA.topics[current].id;
+  notesPendingTid = tid;
   notesStatus.textContent = 'กำลังบันทึก...';
   clearTimeout(notesSaveTimer);
   notesSaveTimer = setTimeout(async () => {
+    notesPendingTid = null;
     await notesSet(tid, notesEditor.innerHTML);
     if (notesLoadedFor === tid) notesStatus.textContent = 'บันทึกแล้ว ✓';
   }, 600);
+}
+/* save immediately if a debounced save is still pending -- called before
+   switching topics so no keystroke is ever lost */
+function flushNotesSave() {
+  if (!notesPendingTid) return;
+  clearTimeout(notesSaveTimer);
+  const tid = notesPendingTid;
+  notesPendingTid = null;
+  notesSet(tid, notesEditor.innerHTML);
 }
 notesEditor.addEventListener('input', scheduleNotesSave);
 
