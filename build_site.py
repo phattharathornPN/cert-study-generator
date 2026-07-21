@@ -223,13 +223,13 @@ html = """<!DOCTYPE html>
 
   #notes-panel.maximized { width: min(1100px, 92vw) !important; }
 
-  @media (max-width: 900px) {
-    #notes-panel { width: 100% !important; min-width: 0; }
-    #notes-resize-handle { display: none; }
-  }
-
-  /* ---------- Mobile ---------- */
+  /* ---------- Mobile (single breakpoint, shared with the sidebar/topbar
+     collapse below, so nothing straddles two different states at once) --- */
   @media (max-width: 768px) {
+    #notes-panel { width: 100% !important; max-width: 100% !important; min-width: 0; }
+    #notes-resize-handle { display: none; }
+    #notes-size-btn { display: none; }  /* maximize is meaningless at full width */
+
     #sidebar {
       position: fixed; z-index: 10; height: 100%; width: min(85vw, 340px);
       transform: translateX(-100%); transition: transform .22s ease;
@@ -245,6 +245,14 @@ html = """<!DOCTYPE html>
     .nav-btn { padding: 9px 12px; font-size: 13px; }
     #md-view { padding: 20px 16px 90px; font-size: 14.5px; }
     .topic { padding: 12px 14px 12px 22px; }
+  }
+
+  /* ---------- Narrow desktop / split-screen (769px-1024px): sidebar still
+     fixed-width like full desktop, but cap the notes panel so it can't eat
+     the whole window and hide the slide/summary behind it entirely ------- */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    #notes-panel { max-width: 60vw; }
+    #notes-panel.maximized { width: 85vw !important; max-width: 85vw !important; }
   }
 </style>
 </head>
