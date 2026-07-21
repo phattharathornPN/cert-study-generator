@@ -188,34 +188,44 @@ html = """<!DOCTYPE html>
 
   /* ---------- Notes panel ---------- */
   #notes-panel {
-    position: absolute; top: 0; right: 0; height: 100%; width: 400px; max-width: 100%;
+    position: absolute; top: 0; right: 0; height: 100%; width: 460px;
+    min-width: 320px; max-width: 92vw;
     background: var(--panel); border-left: 1px solid var(--border);
     display: none; flex-direction: column; z-index: 6; box-shadow: -6px 0 24px rgba(0,0,0,.15);
   }
   #notes-panel.open { display: flex; }
+  #notes-resize-handle {
+    position: absolute; left: -5px; top: 0; bottom: 0; width: 10px;
+    cursor: col-resize; z-index: 7; touch-action: none;
+  }
+  #notes-resize-handle:hover, #notes-resize-handle.dragging { background: var(--accent-soft); }
   #notes-head {
-    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-    border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    border-bottom: 1px solid var(--border); font-size: 14.5px; font-weight: 700;
   }
   #notes-head .grow { flex: 1; }
-  #notes-status { font-size: 11px; color: var(--muted); font-weight: 400; }
+  #notes-status { font-size: 11.5px; color: var(--muted); font-weight: 400; }
   .notes-btn {
     background: none; border: 1px solid var(--border); border-radius: 7px;
-    padding: 5px 9px; cursor: pointer; font-size: 12px; color: var(--text); font-family: inherit;
+    padding: 6px 10px; cursor: pointer; font-size: 12.5px; color: var(--text); font-family: inherit;
   }
   .notes-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #notes-size-btn { font-size: 14px; padding: 6px 9px; }
   #notes-editor {
-    flex: 1; overflow-y: auto; padding: 16px; outline: none;
-    font-size: 14px; line-height: 1.7; color: var(--text);
+    flex: 1; overflow-y: auto; padding: 20px 22px; outline: none;
+    font-size: 16px; line-height: 1.8; color: var(--text);
   }
   #notes-editor:empty::before { content: attr(data-placeholder); color: var(--muted); }
-  #notes-editor img { max-width: 100%; border-radius: 8px; margin: 6px 0; box-shadow: var(--shadow); display: block; }
+  #notes-editor img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: var(--shadow); display: block; }
   #notes-editor pre, #notes-editor code { background: var(--code-bg); border-radius: 5px; padding: 2px 5px; }
-  #notes-hint { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  #notes-hint { padding: 9px 16px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
   .nav-btn.notes-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
+  #notes-panel.maximized { width: min(1100px, 92vw) !important; }
+
   @media (max-width: 900px) {
-    #notes-panel { width: 100%; }
+    #notes-panel { width: 100% !important; min-width: 0; }
+    #notes-resize-handle { display: none; }
   }
 
   /* ---------- Mobile ---------- */
@@ -278,10 +288,12 @@ html = """<!DOCTYPE html>
     <div id="md-view"></div>
     <div id="audio-view"><audio controls id="audio-el"></audio></div>
     <div id="notes-panel">
+      <div id="notes-resize-handle"></div>
       <div id="notes-head">
         📒 โน้ตของฉัน
         <span id="notes-status"></span>
         <span class="grow"></span>
+        <button class="notes-btn" id="notes-size-btn" onclick="toggleNotesMaximize()" title="ขยาย/ย่อช่องโน้ต">⤢</button>
         <button class="notes-btn" onclick="exportNotes()" title="ดาวน์โหลดโน้ตทั้งหมดเป็นไฟล์">⬇ Export</button>
         <button class="notes-btn" onclick="document.getElementById('notes-import').click()" title="นำเข้าโน้ตจากไฟล์">⬆ Import</button>
         <input type="file" id="notes-import" accept=".json" style="display:none" onchange="importNotes(this)">
@@ -558,6 +570,51 @@ function toggleNotes() {
   if (open && current >= 0) loadNotesFor(DATA.topics[current].id);
 }
 
+/* ---------- Notes panel resize / maximize ---------- */
+(function () {
+  const panel = document.getElementById('notes-panel');
+  const handle = document.getElementById('notes-resize-handle');
+  const savedWidth = localStorage.getItem('ccnp-notes-width');
+  if (savedWidth) panel.style.width = savedWidth + 'px';
+
+  let dragging = false, startX = 0, startWidth = 0;
+  function onDown(e) {
+    if (panel.classList.contains('maximized')) return;
+    dragging = true;
+    startX = (e.touches ? e.touches[0].clientX : e.clientX);
+    startWidth = panel.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const x = (e.touches ? e.touches[0].clientX : e.clientX);
+    const newWidth = startWidth + (startX - x);   // panel is right-anchored
+    panel.style.width = Math.max(320, Math.min(newWidth, window.innerWidth * 0.92)) + 'px';
+  }
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    localStorage.setItem('ccnp-notes-width', Math.round(panel.getBoundingClientRect().width));
+  }
+  handle.addEventListener('mousedown', onDown);
+  handle.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('mouseup', onUp);
+  window.addEventListener('touchend', onUp);
+})();
+
+function toggleNotesMaximize() {
+  const p = document.getElementById('notes-panel');
+  const nowMax = p.classList.toggle('maximized');
+  document.getElementById('notes-size-btn').textContent = nowMax ? '⤡' : '⤢';
+  localStorage.setItem('ccnp-notes-maximized', nowMax ? '1' : '');
+}
+
 async function exportNotes() {
   const all = await notesAll();
   const blob = new Blob([JSON.stringify(all)], { type: 'application/json' });
@@ -596,6 +653,7 @@ render('');
     if (idx >= 0) select(idx, true);
   }
   if (localStorage.getItem('ccnp-notes-open')) toggleNotes();
+  if (localStorage.getItem('ccnp-notes-maximized')) toggleNotesMaximize();
 })();
 </script>
 </body>
