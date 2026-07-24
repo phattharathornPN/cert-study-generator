@@ -30,6 +30,7 @@ TOPICS = [
     {"id": "01_18", "topic": "SDM Templates"},
     {"id": "01_19", "topic": "VTP (VLAN Trunking Protocol)"},
     {"id": "01_20", "topic": "GLBP (Gateway Load Balancing Protocol)"},
+    {"id": "01_21", "topic": "TCAM Deep Dive: Ternary Content Addressable Memory"},
 
     # -- Section 02: Enterprise Routing Network --
     {"id": "02_01", "topic": "Routing Concepts"},
