@@ -9,13 +9,35 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 # --- environment -----------------------------------------------------------
-if [[ -f .venv/bin/activate ]]; then
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-else
-  echo "ERROR: .venv not found. Create it with:  uv venv .venv && uv pip install 'notebooklm-py[browser]'" >&2
+# Pick an interpreter that actually has notebooklm importable. The repo is
+# shared between a Linux box (.venv, POSIX layout) and Windows/Git Bash, where
+# .venv/bin/python is an unusable ELF binary -- sourcing activate there
+# silently leaves `python` pointing at a system Python without the deps.
+# So probe candidates instead of trusting activate.
+PY=""
+for cand in \
+  ".venv/bin/python" \
+  ".venv/Scripts/python.exe" \
+  "$APPDATA/uv/tools/notebooklm-py/Scripts/python.exe" \
+  "$HOME/AppData/Roaming/uv/tools/notebooklm-py/Scripts/python.exe" \
+  "$HOME/.local/share/uv/tools/notebooklm-py/bin/python" \
+  "python3" "python"
+do
+  if command -v "$cand" >/dev/null 2>&1 || [[ -x "$cand" ]]; then
+    if "$cand" -c "import notebooklm" >/dev/null 2>&1; then PY="$cand"; break; fi
+  fi
+done
+
+if [[ -z "$PY" ]]; then
+  echo "ERROR: no Python with notebooklm installed was found. Create one with:" >&2
+  echo "  uv venv .venv && uv pip install --python .venv 'notebooklm-py[browser]'" >&2
+  echo "or install it as a tool:  uv tool install 'notebooklm-py[browser]'" >&2
   exit 1
 fi
+
+# `notebooklm` as a bare command is unusable on Windows (Smart App Control
+# blocks the unsigned shim), so always go through the module.
+nlm() { "$PY" -m notebooklm "$@"; }
 
 if [[ -z "${NOTEBOOK_ID:-}" && -f .env ]]; then
   # shellcheck disable=SC1091
@@ -40,7 +62,7 @@ run_logged() {
   local name="$1"; shift
   local log="$LOG_DIR/${name}_$(stamp).log"
   echo "-> logging to $log"
-  python -u "$@" 2>&1 | tee "$log"
+  "$PY" -u "$@" 2>&1 | tee "$log"
 }
 
 # Run a generation script, restarting it wherever it stopped.
@@ -61,9 +83,9 @@ run_resuming() {
     echo ""
     echo "===== attempt $attempt${start:+ (from $start)} ====="
     if [[ -n "$start" ]]; then
-      python -u "$script" --start-id "$start" 2>&1 | tee -a "$log"
+      "$PY" -u "$script" --start-id "$start" 2>&1 | tee -a "$log"
     else
-      python -u "$script" 2>&1 | tee -a "$log"
+      "$PY" -u "$script" 2>&1 | tee -a "$log"
     fi
 
     if tail -n 5 "$log" | grep -q 'complete!'; then
@@ -94,7 +116,7 @@ run_resuming() {
 
     echo ""
     echo "===== stopped at $next -- refreshing auth and resuming ====="
-    if ! python -m notebooklm auth refresh; then
+    if ! nlm auth refresh; then
       echo "===== auth refresh failed -- run: ./ccnp auth login ====="
       break
     fi
@@ -145,7 +167,7 @@ case "$cmd" in
         fi
         echo "  Log in with:  notebooklm -p $prof login --browser chrome" >&2
         echo "" >&2
-        notebooklm profile list >&2
+        nlm profile list >&2
         exit 1
       fi
       prof_args=(--profile "$prof")
@@ -159,7 +181,7 @@ case "$cmd" in
       attempt=$((attempt + 1))
       echo ""
       echo "===== pass $attempt (${workers} workers${prof:+, profile $prof}) ====="
-      python -u "$script" --workers "$workers" "${prof_args[@]}" 2>&1 | tee -a "$log"
+      "$PY" -u "$script" --workers "$workers" "${prof_args[@]}" 2>&1 | tee -a "$log"
 
       if tail -n 5 "$log" | grep -qE 'Nothing to do|0 still pending'; then
         echo ""
@@ -179,7 +201,7 @@ case "$cmd" in
       fi
       echo ""
       echo "===== refreshing auth and continuing ====="
-      python -m notebooklm "${refresh_args[@]}" auth refresh \
+      nlm "${refresh_args[@]}" auth refresh \
         || { echo "run: notebooklm ${prof:+-p $prof }login --browser chrome"; break; }
       sleep 5
     done
@@ -204,7 +226,7 @@ case "$cmd" in
     ;;
 
   status)
-    python - <<'PY'
+    "$PY" - <<'PY'
 import os
 from topics import TOPICS
 from run import topic_to_slug
@@ -245,7 +267,7 @@ PY
     ;;
 
   sources)
-    python - <<'PY'
+    "$PY" - <<'PY'
 import asyncio, os
 from notebooklm import NotebookLMClient
 
@@ -266,15 +288,15 @@ PY
 
   clean-src)
     # ./ccnp clean-src [--yes]     (dry run without --yes)
-    python -u clean_src_sources.py "$@"
+    "$PY" -u clean_src_sources.py "$@"
     ;;
 
   auth)
     # ./ccnp auth [refresh|check|login]
     case "${1:-check}" in
-      refresh) python -m notebooklm auth refresh ;;
-      login)   notebooklm login --browser chrome ;;
-      *)       notebooklm auth check --test --json ;;
+      refresh) nlm auth refresh ;;
+      login)   nlm login --browser chrome ;;
+      *)       nlm auth check --test --json ;;
     esac
     ;;
 
