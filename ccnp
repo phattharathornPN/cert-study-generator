@@ -292,11 +292,20 @@ PY
     ;;
 
   auth)
-    # ./ccnp auth [refresh|check|login]
-    case "${1:-check}" in
-      refresh) nlm auth refresh ;;
-      login)   nlm login --browser chrome ;;
-      *)       nlm auth check --test --json ;;
+    # ./ccnp auth [refresh|check|login] [profile]
+    #   ./ccnp auth login              -- default profile
+    #   ./ccnp auth login account2     -- second account
+    #   ./ccnp auth check account2
+    action="${1:-check}"
+    aprof="${2:-}"
+    pargs=()
+    [[ -n "$aprof" ]] && pargs=(-p "$aprof")
+
+    case "$action" in
+      refresh) nlm "${pargs[@]}" auth refresh ;;
+      login)   nlm "${pargs[@]}" login --browser chrome ;;
+      list)    nlm profile list ;;
+      *)       nlm "${pargs[@]}" auth check --test --json ;;
     esac
     ;;
 
@@ -329,7 +338,9 @@ Inspect:
 Maintenance:
   ./ccnp clean-src              dry run: list derived [SRC] sources
   ./ccnp clean-src --yes        delete them (do this before a full rerun)
-  ./ccnp auth [check|refresh|login]
+  ./ccnp auth [check|refresh|login] [profile]
+                                e.g. ./ccnp auth login account2
+  ./ccnp auth list              show all profiles and which are logged in
 
 Order for a full rebuild:
   1. mv output output_backup_$(date +%F) && mkdir output
