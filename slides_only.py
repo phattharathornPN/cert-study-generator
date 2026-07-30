@@ -42,6 +42,26 @@ class AuthExpiredError(Exception):
     pass
 
 
+def is_auth_error(exc: Exception) -> bool:
+    """True if exc (or anything it wraps) is an expired-session failure.
+
+    Library errors like SourceAddError bury the real RPCError in .cause /
+    __cause__ and replace the message, so a plain str(e) check on the outer
+    exception misses them and the run silently skips every remaining topic.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        text = str(cur)
+        if "Unauthenticated" in text or "Authentication expired" in text:
+            return True
+        if getattr(cur, "rpc_code", None) in (16, "16"):
+            return True
+        cur = cur.__cause__ or getattr(cur, "cause", None)
+    return False
+
+
 async def run_with_retry(coro_fn, label: str):
     rate_limit_retries = 5
     attempt = 0
@@ -49,7 +69,7 @@ async def run_with_retry(coro_fn, label: str):
         try:
             return await coro_fn()
         except Exception as e:
-            if "Unauthenticated" in str(e) or "Authentication expired" in str(e):
+            if is_auth_error(e):
                 raise AuthExpiredError(
                     f"{label}: session expired. Run 'notebooklm auth refresh' or "
                     f"'notebooklm login', then resume with --start-id."
@@ -99,6 +119,23 @@ async def get_or_create_topic_source(client, tid: str, topic: str, folder: str,
     return src.id
 
 
+def build_slide_instructions(topic: str) -> str:
+    """Slide-deck instructions shared with slides_parallel.py."""
+    return (
+        f'สร้างสไลด์เฉพาะหัวข้อ "{topic}" จากเนื้อหา CCNP ENCOR 350-401 เท่านั้น '
+        f"ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
+        f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
+        f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "
+        f"4) ตัวอย่างเดินข้อมูลแบบ step-by-step ด้วยค่าจำลองจริง (IP/MAC/เลข) "
+        f"อย่างน้อย 1 หน้าเต็ม แสดงลำดับขั้นตอนทั้งหมดในสถานการณ์เดียว ไม่ใช่แค่ diagram นามธรรม "
+        f"5) Key points ที่ต้องจำสำหรับสอบ "
+        f"ข้อควรระวังสำคัญ: ถ้าเนื้อหาอธิบายกลไกที่ทำงานโดยไม่พึ่ง CPU/Control Plane "
+        f"(เช่น hardware forwarding, ASIC, wire-speed, fast path) ห้ามวาด diagram ที่มีเส้นทาง "
+        f"ข้อมูลผ่าน CPU หรือ Route Processor เด็ดขาด เพราะจะขัดแย้งกับเนื้อหาที่อธิบายไว้เอง "
+        f"ตรวจสอบว่าทุก diagram สื่อสารตรงกับข้อความที่อธิบายจริง"
+    )
+
+
 async def process_topic(client, t: dict, source_cache: dict):
     tid = t["id"]
     topic = t["topic"]
@@ -121,13 +158,7 @@ async def process_topic(client, t: dict, source_cache: dict):
         return True  # attempted -> still worth the inter-topic sleep
     print(f"  Source pinned: [SRC {tid}]")
 
-    base_instructions = (
-        f'สร้างสไลด์เฉพาะหัวข้อ "{topic}" จากเนื้อหา CCNP ENCOR 350-401 เท่านั้น '
-        f"ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
-        f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
-        f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "
-        f"4) Key points ที่ต้องจำสำหรับสอบ"
-    )
+    base_instructions = build_slide_instructions(topic)
 
     # Bespoke checklists (slide_instructions.json) disabled by default --
     # user preferred the original output style. Re-enable with --use-checklist.
@@ -187,8 +218,14 @@ async def auth_keepalive_loop(profile: str | None):
     # Invoke via `python -m notebooklm` rather than the notebooklm.exe shim --
     # Windows Smart App Control blocks the unsigned .exe on some machines.
     profile_args = ["-p", profile] if profile else []
+    first = True
     while True:
-        await asyncio.sleep(AUTH_REFRESH_INTERVAL)
+        # Refresh immediately on the first pass: the token may already be
+        # stale when the run starts (e.g. the notebook sat idle for a while),
+        # and sleeping first would let the whole run fail before we ever fix it.
+        if not first:
+            await asyncio.sleep(AUTH_REFRESH_INTERVAL)
+        first = False
         try:
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, "-m", "notebooklm", *profile_args, "auth", "refresh", "--quiet",

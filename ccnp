@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# Thin wrapper around the generation scripts so you don't retype the
+# venv + NOTEBOOK_ID prefix every time. Run `./ccnp` for usage.
+#
+# NOTEBOOK_ID resolution order: existing env var -> .env file.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+# --- environment -----------------------------------------------------------
+if [[ -f .venv/bin/activate ]]; then
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+else
+  echo "ERROR: .venv not found. Create it with:  uv venv .venv && uv pip install 'notebooklm-py[browser]'" >&2
+  exit 1
+fi
+
+if [[ -z "${NOTEBOOK_ID:-}" && -f .env ]]; then
+  # shellcheck disable=SC1091
+  set -a; source .env; set +a
+fi
+
+if [[ -z "${NOTEBOOK_ID:-}" ]]; then
+  echo "ERROR: NOTEBOOK_ID not set. Either export it, or put it in .env:" >&2
+  echo "  echo 'NOTEBOOK_ID=your-notebook-id' >> .env" >&2
+  exit 1
+fi
+export NOTEBOOK_ID
+export NOTEBOOKLM_NOTEBOOK="$NOTEBOOK_ID"   # the notebooklm CLI reads this one
+
+LOG_DIR="logs"
+mkdir -p "$LOG_DIR"
+stamp() { date +%Y%m%d_%H%M%S; }
+
+# Long runs go through `python -u` so `tee` shows progress live instead of
+# sitting on a block-buffered pipe for minutes at a time.
+run_logged() {
+  local name="$1"; shift
+  local log="$LOG_DIR/${name}_$(stamp).log"
+  echo "-> logging to $log"
+  python -u "$@" 2>&1 | tee "$log"
+}
+
+# Run a generation script, restarting it wherever it stopped.
+#
+# The in-process auth keepalive cannot actually save a long run: it refreshes
+# storage_state.json from a subprocess, but the live NotebookLMClient keeps its
+# credentials in memory and never re-reads that file, so the token still ages
+# out mid-run. Restarting the process is what genuinely picks up a fresh token,
+# and the scripts already print the exact id to resume from.
+run_resuming() {
+  local name="$1" script="$2" start="${3:-}"
+  local log="$LOG_DIR/${name}_$(stamp).log"
+  local attempt=0 last_start="" repeats=0 next
+
+  echo "-> logging to $log"
+  while :; do
+    attempt=$((attempt + 1))
+    echo ""
+    echo "===== attempt $attempt${start:+ (from $start)} ====="
+    if [[ -n "$start" ]]; then
+      python -u "$script" --start-id "$start" 2>&1 | tee -a "$log"
+    else
+      python -u "$script" 2>&1 | tee -a "$log"
+    fi
+
+    if tail -n 5 "$log" | grep -q 'complete!'; then
+      echo ""
+      echo "===== finished after $attempt attempt(s) ====="
+      break
+    fi
+
+    next="$(grep -o -- '--start-id [0-9][0-9]_[0-9][0-9]' "$log" | tail -n 1 | awk '{print $2}')"
+    if [[ -z "$next" ]]; then
+      echo ""
+      echo "===== stopped with no resume point -- check $log ====="
+      break
+    fi
+
+    if [[ "$next" == "$last_start" ]]; then
+      repeats=$((repeats + 1))
+    else
+      repeats=0
+    fi
+    if (( repeats >= 2 )); then
+      echo ""
+      echo "===== $next failed 3 times running -- giving up, check $log ====="
+      break
+    fi
+    last_start="$next"
+    start="$next"
+
+    echo ""
+    echo "===== stopped at $next -- refreshing auth and resuming ====="
+    if ! python -m notebooklm auth refresh; then
+      echo "===== auth refresh failed -- run: ./ccnp auth login ====="
+      break
+    fi
+    sleep 5
+  done
+}
+
+# --- commands --------------------------------------------------------------
+cmd="${1:-help}"; shift || true
+
+case "$cmd" in
+  summary)
+    # ./ccnp summary [start-id]      -- auto-resumes past token expiry
+    run_resuming summary summary_only.py "${1:-}"
+    ;;
+
+  slides)
+    # ./ccnp slides [start-id]       -- auto-resumes past token expiry
+    run_resuming slides slides_only.py "${1:-}"
+    ;;
+
+  summary-fast|slides-fast)
+    # ./ccnp <cmd> [workers] [profile] -- either order, both optional.
+    # Anything numeric is the worker count, anything else is a profile name,
+    # so `./ccnp slides-fast acct3` does the obvious thing instead of trying
+    # to run "acct3" workers.
+    if [[ "$cmd" == summary-fast ]]; then
+      script="summary_parallel.py"; workers=4; label="summaries"
+    else
+      script="slides_parallel.py";  workers=3; label="slides"
+    fi
+    prof=""
+    for a in "$@"; do
+      if [[ "$a" =~ ^[0-9]+$ ]]; then workers="$a"; else prof="$a"; fi
+    done
+
+    prof_args=(); refresh_args=()
+    if [[ -n "$prof" ]]; then
+      # Check the auth file directly. Grepping `notebooklm profile list`
+      # means parsing a rich-rendered table whose padding and width shift
+      # with the terminal, which produced false "does not exist" errors.
+      auth_file="$HOME/.notebooklm/profiles/$prof/storage_state.json"
+      if [[ ! -s "$auth_file" ]]; then
+        if [[ -d "$HOME/.notebooklm/profiles/$prof" ]]; then
+          echo "ERROR: profile '$prof' exists but is not authenticated." >&2
+        else
+          echo "ERROR: profile '$prof' does not exist." >&2
+        fi
+        echo "  Log in with:  notebooklm -p $prof login --browser chrome" >&2
+        echo "" >&2
+        notebooklm profile list >&2
+        exit 1
+      fi
+      prof_args=(--profile "$prof")
+      refresh_args=(-p "$prof")
+    fi
+
+    log="$LOG_DIR/${cmd//-/_}_$(stamp).log"
+    echo "-> logging to $log"
+    attempt=0
+    while :; do
+      attempt=$((attempt + 1))
+      echo ""
+      echo "===== pass $attempt (${workers} workers${prof:+, profile $prof}) ====="
+      python -u "$script" --workers "$workers" "${prof_args[@]}" 2>&1 | tee -a "$log"
+
+      if tail -n 5 "$log" | grep -qE 'Nothing to do|0 still pending'; then
+        echo ""
+        echo "===== all ${label} complete ====="
+        break
+      fi
+      # A Python traceback means the script itself is broken (bad argument,
+      # missing file). Retrying that just reprints the same crash 30 times.
+      if tail -n 20 "$log" | grep -q '^Traceback (most recent call last)'; then
+        echo ""
+        echo "===== crashed -- not a quota problem, see the traceback above ====="
+        break
+      fi
+      if (( attempt >= 30 )); then
+        echo "===== 30 passes without finishing -- check $log ====="
+        break
+      fi
+      echo ""
+      echo "===== refreshing auth and continuing ====="
+      python -m notebooklm "${refresh_args[@]}" auth refresh \
+        || { echo "run: notebooklm ${prof:+-p $prof }login --browser chrome"; break; }
+      sleep 5
+    done
+    ;;
+
+  summary-once|slides-once)
+    # single pass, no auto-resume (for debugging)
+    script="summary_only.py"; [[ "$cmd" == slides-once ]] && script="slides_only.py"
+    if [[ $# -gt 0 ]]; then
+      run_logged "${cmd}" "$script" --start-id "$1"
+    else
+      run_logged "${cmd}" "$script"
+    fi
+    ;;
+
+  topic)
+    # ./ccnp topic 01_23 [--summary-only]
+    if [[ $# -eq 0 ]]; then
+      echo "usage: ./ccnp topic <id> [--summary-only]" >&2; exit 1
+    fi
+    run_logged "topic_$1" rerun_topic.py "$@"
+    ;;
+
+  status)
+    python - <<'PY'
+import os
+from topics import TOPICS
+from run import topic_to_slug
+
+FILES = ("summary_th.md", "slide.pdf", "slide.pptx", "audio.mp3", "flashcards.json")
+counts = dict.fromkeys(FILES, 0)
+incomplete = []
+
+for t in TOPICS:
+    folder = os.path.join("output", f"{t['id']}_{topic_to_slug(t['topic'])}")
+    missing = []
+    for f in FILES:
+        p = os.path.join(folder, f)
+        if os.path.exists(p) and os.path.getsize(p) > 0:
+            counts[f] += 1
+        else:
+            missing.append(f)
+    if missing:
+        incomplete.append((t["id"], t["topic"], missing))
+
+total = len(TOPICS)
+print(f"Topics: {total}\n")
+for f in FILES:
+    n = counts[f]
+    bar = "#" * int(28 * n / total)
+    print(f"  {f:<16} {n:>3}/{total}  {bar}")
+
+pending = [x for x in incomplete if "summary_th.md" in x[2]]
+if pending:
+    print(f"\nNo summary yet ({len(pending)}), next up: {pending[0][0]} {pending[0][1]}")
+else:
+    print("\nAll summaries present.")
+
+no_slide = [x for x in incomplete if "slide.pdf" in x[2]]
+if no_slide:
+    print(f"No slide yet ({len(no_slide)}), first: {no_slide[0][0]} {no_slide[0][1]}")
+PY
+    ;;
+
+  sources)
+    python - <<'PY'
+import asyncio, os
+from notebooklm import NotebookLMClient
+
+NB = os.environ["NOTEBOOK_ID"]
+
+async def main():
+    async with NotebookLMClient.from_storage() as client:
+        srcs = await client.sources.list(NB)
+        derived = [s for s in srcs if s.title and s.title.startswith("[SRC ")]
+        limit = await client.sources._get_source_limit()
+        print(f"total           : {len(srcs)} / {limit}")
+        print(f"[SRC] derived   : {len(derived)}   (own summaries, regenerated by slides run)")
+        print(f"reference       : {len(srcs) - len(derived)}")
+
+asyncio.run(main())
+PY
+    ;;
+
+  clean-src)
+    # ./ccnp clean-src [--yes]     (dry run without --yes)
+    python -u clean_src_sources.py "$@"
+    ;;
+
+  auth)
+    # ./ccnp auth [refresh|check|login]
+    case "${1:-check}" in
+      refresh) python -m notebooklm auth refresh ;;
+      login)   notebooklm login --browser chrome ;;
+      *)       notebooklm auth check --test --json ;;
+    esac
+    ;;
+
+  watch)
+    watch -n 30 "ls $ROOT/output/*/summary_th.md 2>/dev/null | wc -l; ls -t $ROOT/output/ | head -3"
+    ;;
+
+  *)
+    cat <<'USAGE'
+ccnp -- CCNP ENCOR study-pack generator
+
+Generation (long running; logs land in logs/):
+  ./ccnp summary-fast [workers]   summaries, N at a time (default 4)  <- fastest
+  ./ccnp slides-fast  [workers]   slide decks, N at a time (default 3) <- fastest
+  ./ccnp summary [start-id]       summaries, one at a time  (~3-4 h)
+  ./ccnp slides  [start-id]       slide decks, one at a time (~5-6 h)
+  ./ccnp topic <id> [--summary-only]
+                                  redo ONE topic; old files move to _prev/
+
+  The -fast runners skip topics that are already done, so just run them
+  again after any stop -- no --start-id bookkeeping. The sequential ones
+  resume by id instead:
+      ./ccnp summary 03_05
+
+Inspect:
+  ./ccnp status                 per-artifact progress + what's next
+  ./ccnp sources                notebook source counts vs limit
+  ./ccnp watch                  live summary count, refreshes every 30s
+
+Maintenance:
+  ./ccnp clean-src              dry run: list derived [SRC] sources
+  ./ccnp clean-src --yes        delete them (do this before a full rerun)
+  ./ccnp auth [check|refresh|login]
+
+Order for a full rebuild:
+  1. mv output output_backup_$(date +%F) && mkdir output
+  2. ./ccnp clean-src --yes
+  3. ./ccnp summary
+  4. ./ccnp slides
+Never run 3 and 4 at the same time -- they share the rate limit.
+USAGE
+    ;;
+esac

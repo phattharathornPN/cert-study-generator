@@ -29,7 +29,11 @@ node_modules/
 
 # Generated / cache files (regenerate anytime with the scripts)
 slide_instructions.json
+content_gaps_raw.json
+content_gaps_report.json
+content_gaps_report.md
 *.log
+log_*.txt
 
 # Python
 __pycache__/
