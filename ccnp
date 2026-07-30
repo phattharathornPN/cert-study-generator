@@ -292,18 +292,23 @@ PY
     ;;
 
   auth)
-    # ./ccnp auth [refresh|check|login] [profile]
-    #   ./ccnp auth login              -- default profile
-    #   ./ccnp auth login account2     -- second account
+    # ./ccnp auth [refresh|check|login|list] [profile] [browser]
+    #   ./ccnp auth login                     -- default profile, chrome
+    #   ./ccnp auth login account2            -- second account
+    #   ./ccnp auth login account2 msedge     -- ...via Edge (SSO orgs need this)
     #   ./ccnp auth check account2
+    #
+    # Note the CLI wants the profile as a GLOBAL option before the
+    # subcommand (`notebooklm -p acct login`), not `notebooklm login acct`.
     action="${1:-check}"
     aprof="${2:-}"
+    abrowser="${3:-chrome}"
     pargs=()
     [[ -n "$aprof" ]] && pargs=(-p "$aprof")
 
     case "$action" in
       refresh) nlm "${pargs[@]}" auth refresh ;;
-      login)   nlm "${pargs[@]}" login --browser chrome ;;
+      login)   nlm "${pargs[@]}" login --browser "$abrowser" ;;
       list)    nlm profile list ;;
       *)       nlm "${pargs[@]}" auth check --test --json ;;
     esac
@@ -338,8 +343,9 @@ Inspect:
 Maintenance:
   ./ccnp clean-src              dry run: list derived [SRC] sources
   ./ccnp clean-src --yes        delete them (do this before a full rerun)
-  ./ccnp auth [check|refresh|login] [profile]
+  ./ccnp auth [check|refresh|login] [profile] [browser]
                                 e.g. ./ccnp auth login account2
+                                     ./ccnp auth login account2 msedge
   ./ccnp auth list              show all profiles and which are logged in
 
 Order for a full rebuild:
