@@ -18,7 +18,7 @@ PY=""
 for cand in \
   ".venv/bin/python" \
   ".venv/Scripts/python.exe" \
-  "$APPDATA/uv/tools/notebooklm-py/Scripts/python.exe" \
+  "${APPDATA:-}/uv/tools/notebooklm-py/Scripts/python.exe" \
   "$HOME/AppData/Roaming/uv/tools/notebooklm-py/Scripts/python.exe" \
   "$HOME/.local/share/uv/tools/notebooklm-py/bin/python" \
   "python3" "python"
@@ -310,8 +310,32 @@ PY
       refresh) nlm "${pargs[@]}" auth refresh ;;
       login)   nlm "${pargs[@]}" login --browser "$abrowser" ;;
       list)    nlm profile list ;;
+
+      # Pull cookies straight out of an already-signed-in browser instead of
+      # driving a Playwright window. Much more reliable than `login` once the
+      # persistent browser profile gets big -- that's what makes the login
+      # window close on itself mid-flow.
+      #   ./ccnp auth cookies                  -- every signed-in account -> its own profile
+      #   ./ccnp auth cookies chrome           -- from Chrome instead of Edge
+      cookies)
+        nlm login --browser-cookies "${2:-edge}" --all-accounts
+        ;;
       *)       nlm "${pargs[@]}" auth check --test --json ;;
     esac
+    ;;
+
+  doctor)
+    # ./ccnp doctor -- which interpreter got picked and what it can import
+    echo "PY        : $PY"
+    "$PY" -c "import sys; print('resolved  :', sys.executable)"
+    for m in notebooklm rookiepy google.genai; do
+      if "$PY" -c "import $m" >/dev/null 2>&1; then
+        echo "$m: OK"
+      else
+        echo "$m: MISSING"
+      fi
+    done
+    echo "NOTEBOOK_ID: ${NOTEBOOK_ID:0:8}..."
     ;;
 
   watch)
@@ -346,6 +370,9 @@ Maintenance:
   ./ccnp auth [check|refresh|login] [profile] [browser]
                                 e.g. ./ccnp auth login account2
                                      ./ccnp auth login account2 msedge
+  ./ccnp auth cookies [browser] import EVERY signed-in Google account from
+                                your real browser (edge by default) -- no
+                                login window, survives a bloated profile
   ./ccnp auth list              show all profiles and which are logged in
 
 Order for a full rebuild:
