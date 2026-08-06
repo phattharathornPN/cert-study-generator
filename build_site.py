@@ -8,18 +8,8 @@ Then serve:                          python -m http.server 8000
 import json
 import os
 
-OUTPUT_DIR = "output"
+from cert_config import OUTPUT_DIR, SECTION_TITLES, SITE_DIR
 
-SECTION_TITLES = {
-    "01": "Enterprise LAN Architecture",
-    "02": "Enterprise Routing Network",
-    "03": "Virtualization Technologies",
-    "04": "Enterprise Wireless Architecture",
-    "05": "Network Services",
-    "06": "Enterprise Security Architecture",
-    "07": "Automation and Assurance",
-    "08": "Network Programmability",
-}
 
 topics = []
 for folder in sorted(os.listdir(OUTPUT_DIR)):
@@ -670,12 +660,14 @@ render('');
 
 html = html.replace("__MANIFEST__", manifest)
 
-with open("index.html", "w", encoding="utf-8") as f:
+index_path = os.path.join(SITE_DIR, "index.html")
+os.makedirs(SITE_DIR, exist_ok=True)
+with open(index_path, "w", encoding="utf-8") as f:
     f.write(html)
 
 n_pdf = sum(1 for t in topics if t["has_pdf"])
 n_md = sum(1 for t in topics if t["has_md"])
 n_audio = sum(1 for t in topics if t["has_audio"])
-print(f"index.html generated: {len(topics)} topics ({n_pdf} slides, {n_md} summaries, {n_audio} audio)")
+print(f"{index_path} generated: {len(topics)} topics ({n_pdf} slides, {n_md} summaries, {n_audio} audio)")
 print("Serve with:  python -m http.server 8000")
 print("Open:        http://localhost:8000")

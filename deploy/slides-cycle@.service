@@ -1,0 +1,45 @@
+[Unit]
+# One slide-generation cycle for one certification:
+#     systemctl enable --now slides-cycle@ccnp_v2.timer
+#
+# Deliberately oneshot rather than a long-running loop. Each cycle re-reads
+# the disk and the ledger from scratch, so nothing depends on a process
+# staying alive: a crash, a reboot or an SSH drop costs one cycle, never a
+# task id. The predecessor was a daemon holding all its state in memory,
+# which is how requested decks went missing and got requested again.
+Description=Slide cycle for %i (kickoff, collect, sweep)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+WorkingDirectory=__REPO__
+Environment=CERT=%i
+# The allowance is per Google account, so the runner drains them in turn --
+# each until it refuses eight in a row, then the next.
+Environment=SLIDE_PROFILES=default,account2,account3,account4,account5
+# Cap the requests per cycle so a single cycle cannot spend a whole day's
+# allowance before the collect phase has had a chance to bring anything down.
+Environment=SLIDE_MAX_KICKOFF=25
+EnvironmentFile=-__REPO__/.env
+# -u matters here: without it Python block-buffers stdout when it is not a
+# tty, so a cycle that spends twelve minutes backing off shows nothing in the
+# journal until it exits. For a service nobody watches live, being able to
+# ask "what is it doing right now" is the whole point of the log.
+ExecStart=__REPO__/.venv/bin/python -u slides_v2.py \
+    --profiles ${SLIDE_PROFILES} --max-kickoff ${SLIDE_MAX_KICKOFF}
+
+# A cycle that finds no allowance exits 0 with nothing done, which is normal.
+# Exit 2 means every account failed to authenticate -- that needs a human, so
+# let it fail loudly rather than retry into the same wall.
+#
+# This is a safety net, not the pacing control. At 3600 it was neither: a
+# fully-refused cycle took longer than an hour, so systemd SIGTERMed it in
+# the middle of a request and left the ledger frozen with sources stranded.
+# The cycle now sizes itself to finish in minutes; three hours is only here
+# to catch a genuine hang.
+TimeoutStartSec=3h
+
+[Install]
+WantedBy=multi-user.target

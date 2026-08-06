@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The original 136-topic CCNP pack (certs/ccnp.py), kept reachable now that a
+# bare ./ccnp means v2.
+exec env CERT=ccnp "$(dirname "${BASH_SOURCE[0]}")/ccnp" "$@"

@@ -9,17 +9,21 @@ Run this AFTER build_site.py, right before `wrangler pages deploy dist`.
 import os
 import shutil
 
-DIST_DIR = "dist"
-OUTPUT_DIR = "output"
+from cert_config import DIST_DIR, OUTPUT_DIR, SITE_DIR
+
+# The website only ever reads slide.pdf, so .pptx never belongs in a deploy
+# regardless of which formats the cert downloads for offline use. (This is a
+# separate question from SLIDE_FORMATS, which controls what gets fetched from
+# NotebookLM in the first place.)
 SKIP_FILES = {"slide.pptx"}
 
 if os.path.exists(DIST_DIR):
     shutil.rmtree(DIST_DIR)
 os.makedirs(DIST_DIR)
 
-shutil.copy("index.html", os.path.join(DIST_DIR, "index.html"))
+shutil.copy(os.path.join(SITE_DIR, "index.html"), os.path.join(DIST_DIR, "index.html"))
 
-dist_output = os.path.join(DIST_DIR, OUTPUT_DIR)
+dist_output = os.path.join(DIST_DIR, os.path.relpath(OUTPUT_DIR, SITE_DIR))
 total_bytes = 0
 n_files = 0
 

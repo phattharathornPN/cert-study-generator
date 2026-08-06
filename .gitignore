@@ -1,9 +1,13 @@
 # Generated study content -- derived from copyrighted source material you
 # upload yourself. Never commit this; each user generates their own.
+# Matches at any depth (CCNA/output/, v2/output/, ...) and any stale/renamed
+# variant left behind by a renumber or topic-list swap.
 output/
-output_backup*/
+output_*/
 dist/
 index.html
+ledger.json
+.slides.lock
 
 # Source material and compiled derivatives -- never commit copyrighted
 # textbooks/exam guides or the summaries compiled from them.
@@ -42,3 +46,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+.active-profile
+
+# local archive of superseded material
+_archive/

@@ -11,16 +11,19 @@ from notebooklm.rpc.types import (
     SlideDeckLength,
 )
 
-from topics import TOPICS  # noqa: F401  (re-exported for downstream scripts)
+# Which exam this run belongs to comes from cert_config (CERT env var,
+# default "ccnp"). Downstream scripts import NOTEBOOK_ID / OUTPUT_DIR /
+# TOPICS from here, so wiring it up once at this level makes the whole
+# pipeline cert-aware without every script growing its own lookup.
+from cert_config import (  # noqa: F401  (re-exported for downstream scripts)
+    EXAM_NAME,
+    OUTPUT_DIR,
+    SLIDE_FORMATS,
+    TOPICS,
+    notebook_id,
+)
 
-NOTEBOOK_ID = os.environ.get("NOTEBOOK_ID")
-if not NOTEBOOK_ID:
-    print("ERROR: NOTEBOOK_ID environment variable not set. "
-          "Copy .env.example to .env, fill in your notebook ID, and set it "
-          "in your shell (e.g. $env:NOTEBOOK_ID = \"...\" in PowerShell).")
-    sys.exit(1)
-
-OUTPUT_DIR = "output"
+NOTEBOOK_ID = notebook_id()
 SLEEP_BETWEEN_ARTIFACTS = 15
 SLEEP_AFTER_AUDIO = 30
 SLEEP_BETWEEN_TOPICS = 20
@@ -35,7 +38,7 @@ def topic_to_slug(topic: str) -> str:
 
 
 def build_focus_prompt(topic: str) -> str:
-    return f"""ฉันต้องการเรียนเฉพาะหัวข้อนี้จากเนื้อหา CCNP ENCOR 350-401:
+    return f"""ฉันต้องการเรียนเฉพาะหัวข้อนี้จากเนื้อหา {EXAM_NAME}:
 
 หัวข้อ: {topic}
 
@@ -43,7 +46,7 @@ def build_focus_prompt(topic: str) -> str:
 1. แนวคิดหลักและความสำคัญ
 2. การทำงาน (How it works)
 3. ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี
-4. Key points ที่ต้องจำสำหรับสอบ CCNP ENCOR 350-401
+4. Key points ที่ต้องจำสำหรับสอบ {EXAM_NAME}
 
 ตอบเฉพาะหัวข้อ "{topic}" เท่านั้น ไม่ต้องพูดถึงหัวข้ออื่น"""
 
@@ -119,7 +122,7 @@ async def process_topic(client, t: dict):
             NOTEBOOK_ID,
             language="th",
             instructions=(
-                f'สร้างสไลด์เฉพาะหัวข้อ "{topic}" จากเนื้อหา CCNP ENCOR 350-401 เท่านั้น '
+                f'สร้างสไลด์เฉพาะหัวข้อ "{topic}" จากเนื้อหา {EXAM_NAME} เท่านั้น '
                 f"ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
                 f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
                 f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "
@@ -168,7 +171,7 @@ async def process_topic(client, t: dict):
             NOTEBOOK_ID,
             language="th",
             instructions=(
-                f'อธิบายเฉพาะหัวข้อ "{topic}" จากเนื้อหา CCNP ENCOR 350-401 เป็นภาษาไทย '
+                f'อธิบายเฉพาะหัวข้อ "{topic}" จากเนื้อหา {EXAM_NAME} เป็นภาษาไทย '
                 f"แบบเข้าใจง่าย ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
                 f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
                 f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "

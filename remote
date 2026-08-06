@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Check on (and drive) the generation run happening on the other machine.
+#
+# The long slide runs live on 192.168.2.153 because it stays powered on;
+# this wrapper saves retyping the ssh + cd + log-hunting every time.
+#
+#   ./remote status     progress, whether it is alive, per-account quota state
+#   ./remote log [n]    last n lines of the live log (default 30)
+#   ./remote watch      status, refreshed every 60s
+#   ./remote sync       pull generated files back to this machine
+#   ./remote start      launch the slide run with all six accounts
+#   ./remote stop       stop the run
+set -uo pipefail
+
+HOST="${REMOTE_HOST:-root@192.168.2.153}"
+DIR="${REMOTE_DIR:-/root/cert-study-generator}"
+CERT="${CERT:-ccnp_v2}"
+PROFILES="${PROFILES:-default,account2,account3,account4,account5,account6}"
+WORKERS="${WORKERS:-3}"
+
+LOCAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+rsh() { ssh -o BatchMode=yes -o ConnectTimeout=8 "$HOST" "$@"; }
+
+# Which output dir the cert writes to -- asked once, remotely, so this stays
+# correct if the cert config changes.
+remote_outdir() {
+  rsh "cd '$DIR' && CERT='$CERT' .venv/bin/python -c 'import cert_config;print(cert_config.OUTPUT_DIR)'" 2>/dev/null
+}
+
+cmd="${1:-status}"; shift || true
+
+case "$cmd" in
+  status)
+    rsh "cd '$DIR' || exit 1
+      out=\$(CERT='$CERT' .venv/bin/python -c 'import cert_config;print(cert_config.OUTPUT_DIR)' 2>/dev/null)
+      total=\$(CERT='$CERT' .venv/bin/python -c 'import cert_config;print(len(cert_config.TOPICS))' 2>/dev/null)
+
+      # grep -v grep matters: a plain pgrep matches this very ssh command line
+      pid=\$(ps -eo pid,cmd --no-headers | grep -E 'slides_parallel|summary_parallel' | grep -v grep | awk '{print \$1}' | head -1)
+
+      echo \"host    : \$(hostname)  (up \$(uptime -p 2>/dev/null | sed 's/^up //'))\"
+      echo \"cert    : $CERT -> \$out\"
+      if [ -n \"\$pid\" ]; then
+        echo \"running : yes (pid \$pid, \$(ps -o etime= -p \$pid | tr -d ' ') elapsed)\"
+      else
+        echo \"running : NO\"
+      fi
+      echo \"summary : \$(find \$out -name summary_th.md 2>/dev/null | wc -l)/\$total\"
+      echo \"slides  : \$(find \$out -name slide.pdf 2>/dev/null | wc -l)/\$total\"
+
+      L=\$(ls -t logs/*.log 2>/dev/null | head -1)
+      [ -z \"\$L\" ] && exit 0
+      echo \"log     : \$L  (\$(date -r \"\$L\" '+%m-%d %H:%M'))\"
+      echo \"          ok=\$(grep -cE '^OK \[' \"\$L\") refused=\$(grep -cE 'refused' \"\$L\")\"
+
+      # Last thing each account did tells you whether quota is the blocker.
+      echo ''
+      echo 'recent:'
+      grep -E 'switching to|out of quota|^OK \[|no progress|quota looks spent|all .* complete' \"\$L\" | tail -6 | sed 's/^/  /'
+    "
+    ;;
+
+  log)
+    n="${1:-30}"
+    rsh "cd '$DIR' && L=\$(ls -t logs/*.log 2>/dev/null | head -1) && echo \"== \$L\" && tail -n $n \"\$L\""
+    ;;
+
+  watch)
+    while :; do
+      clear
+      echo "== $(date '+%H:%M:%S') =="
+      "$LOCAL_ROOT/remote" status
+      sleep 60
+    done
+    ;;
+
+  sync)
+    out="$(remote_outdir)"
+    if [[ -z "$out" ]]; then echo "cannot resolve remote output dir" >&2; exit 1; fi
+    echo "-> pulling $HOST:$DIR/$out/ into $out/"
+    mkdir -p "$LOCAL_ROOT/$out"
+    rsync -az --update --info=stats2 \
+      "$HOST:$DIR/$out/" "$LOCAL_ROOT/$out/" | tail -3
+    echo "  local slides: $(find "$LOCAL_ROOT/$out" -name slide.pdf 2>/dev/null | wc -l)"
+    ;;
+
+  start)
+    rsh "cd '$DIR' || exit 1
+      if ps -eo cmd --no-headers | grep -E 'slides_parallel|summary_parallel' | grep -qv grep; then
+        echo 'already running -- ./remote stop first'; exit 1
+      fi
+      mkdir -p logs
+      nohup env CERT='$CERT' ./ccnp slides-fast $WORKERS --profiles $PROFILES \
+        > logs/${CERT}_\$(date +%m%d_%H%M).log 2>&1 &
+      sleep 8
+      ps -eo pid,cmd --no-headers | grep slides_parallel | grep -v grep | head -1
+    "
+    ;;
+
+  stop)
+    rsh "pkill -f 'slides_parallel|summary_parallel' && echo stopped || echo 'nothing running'"
+    ;;
+
+  *)
+    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    ;;
+esac

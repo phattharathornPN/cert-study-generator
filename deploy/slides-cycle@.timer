@@ -1,0 +1,19 @@
+[Unit]
+Description=Run a slide cycle for %i every 20 minutes
+
+[Timer]
+# 20 minutes is chosen against the observed refill, not the clock: an
+# account's allowance trickles back a few decks an hour, so checking more
+# often just collects refusals, and checking less often leaves decks that
+# have finished building sitting uncollected.
+OnBootSec=5min
+OnUnitActiveSec=20min
+# Fire once on the way back up rather than waiting out the interval -- the
+# box has lost power twice, and both times the work simply stopped.
+Persistent=true
+# The cycle takes its own lock, so a late-running one can never be overtaken;
+# this only avoids five certs all waking on the same second.
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

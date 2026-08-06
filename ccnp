@@ -39,18 +39,33 @@ fi
 # blocks the unsigned shim), so always go through the module.
 nlm() { "$PY" -m notebooklm "$@"; }
 
-if [[ -z "${NOTEBOOK_ID:-}" && -f .env ]]; then
+# Which exam this invocation drives. The sibling wrappers (./ccna, ./ccnp1,
+# ./sec) set this explicitly; a bare ./ccnp now means the v2 CCNP pack, since
+# that is the one being generated. The original 136-topic pack is still there
+# as ./ccnp1 (CERT=ccnp).
+export CERT="${CERT:-ccnp_v2}"
+
+# Each cert declares its own notebook env var (NOTEBOOK_ID, NOTEBOOK_ID_CCNA,
+# ...) in certs/<cert>.py, so ask the config rather than assuming.
+NB_ENV="$("$PY" -c 'import cert_config; print(cert_config.NOTEBOOK_ENV)' 2>/dev/null)"
+if [[ -z "$NB_ENV" ]]; then
+  echo "ERROR: could not load config for CERT=$CERT" >&2
+  "$PY" -c 'import cert_config' >&2
+  exit 1
+fi
+
+if [[ -z "${!NB_ENV:-}" && -f .env ]]; then
   # shellcheck disable=SC1091
   set -a; source .env; set +a
 fi
 
-if [[ -z "${NOTEBOOK_ID:-}" ]]; then
-  echo "ERROR: NOTEBOOK_ID not set. Either export it, or put it in .env:" >&2
-  echo "  echo 'NOTEBOOK_ID=your-notebook-id' >> .env" >&2
+if [[ -z "${!NB_ENV:-}" ]]; then
+  echo "ERROR: $NB_ENV not set (needed for CERT=$CERT). Either export it, or add it to .env:" >&2
+  echo "  echo '$NB_ENV=your-notebook-id' >> .env" >&2
   exit 1
 fi
-export NOTEBOOK_ID
-export NOTEBOOKLM_NOTEBOOK="$NOTEBOOK_ID"   # the notebooklm CLI reads this one
+export "${NB_ENV?}"
+export NOTEBOOKLM_NOTEBOOK="${!NB_ENV}"   # the notebooklm CLI reads this one
 
 LOG_DIR="logs"
 mkdir -p "$LOG_DIR"
@@ -73,20 +88,19 @@ run_logged() {
 # out mid-run. Restarting the process is what genuinely picks up a fresh token,
 # and the scripts already print the exact id to resume from.
 run_resuming() {
-  local name="$1" script="$2" start="${3:-}"
+  local name="$1" script="$2" start="${3:-}" prof="${4:-}"
   local log="$LOG_DIR/${name}_$(stamp).log"
   local attempt=0 last_start="" repeats=0 next
+  local extra=()
+  [[ -n "$start" ]] && extra+=(--start-id "$start")
+  [[ -n "$prof" ]] && extra+=(--profile "$prof")
 
   echo "-> logging to $log"
   while :; do
     attempt=$((attempt + 1))
     echo ""
-    echo "===== attempt $attempt${start:+ (from $start)} ====="
-    if [[ -n "$start" ]]; then
-      "$PY" -u "$script" --start-id "$start" 2>&1 | tee -a "$log"
-    else
-      "$PY" -u "$script" 2>&1 | tee -a "$log"
-    fi
+    echo "===== attempt $attempt${start:+ (from $start)}${prof:+ (profile $prof)} ====="
+    "$PY" -u "$script" "${extra[@]}" 2>&1 | tee -a "$log"
 
     if tail -n 5 "$log" | grep -q 'complete!'; then
       echo ""
@@ -134,20 +148,31 @@ case "$cmd" in
     ;;
 
   slides)
-    # ./ccnp slides [start-id]       -- auto-resumes past token expiry
-    run_resuming slides slides_only.py "${1:-}"
+    # ./ccnp slides [profiles]   -- one cycle of slides_v2.py
+    #
+    # slides_v2 keeps its own ledger, lock and retry policy, so there is
+    # nothing for the shell to supervise: no resume loop, no profile
+    # bookkeeping. Normally the slides-cycle@ timer runs this; the command is
+    # here for running a cycle by hand.
+    profs="${1:-default,account2,account3,account4,account5}"
+    log="$LOG_DIR/slides_$(stamp).log"
+    echo "-> logging to $log"
+    "$PY" -u slides_v2.py --profiles "$profs" 2>&1 | tee -a "$log"
     ;;
 
-  summary-fast|slides-fast)
-    # ./ccnp <cmd> [workers] [profile] -- either order, both optional.
+  slides-fast)
+    echo "slides-fast has been removed -- it had no ledger, no lock and a flat" >&2
+    echo "retry, and lost requested decks. Use:  ./ccnp slides" >&2
+    exit 1
+    ;;
+
+  summary-fast)
+    # ./ccnp summary-fast [workers] [profile] -- either order, both optional.
     # Anything numeric is the worker count, anything else is a profile name,
-    # so `./ccnp slides-fast acct3` does the obvious thing instead of trying
-    # to run "acct3" workers.
-    if [[ "$cmd" == summary-fast ]]; then
-      script="summary_parallel.py"; workers=4; label="summaries"
-    else
-      script="slides_parallel.py";  workers=3; label="slides"
-    fi
+    # so `./ccnp summary-fast acct3` does the obvious thing instead of trying
+    # to run "acct3" workers. Summaries are chat calls, not artifacts, and do
+    # not hit the artifact allowance that makes slides slow.
+    script="summary_parallel.py"; workers=4; label="summaries"
     prof=""
     for a in "$@"; do
       if [[ "$a" =~ ^[0-9]+$ ]]; then workers="$a"; else prof="$a"; fi
@@ -155,33 +180,68 @@ case "$cmd" in
 
     prof_args=(); refresh_args=()
     if [[ -n "$prof" ]]; then
-      # Check the auth file directly. Grepping `notebooklm profile list`
+      # Check the auth files directly. Grepping `notebooklm profile list`
       # means parsing a rich-rendered table whose padding and width shift
       # with the terminal, which produced false "does not exist" errors.
-      auth_file="$HOME/.notebooklm/profiles/$prof/storage_state.json"
-      if [[ ! -s "$auth_file" ]]; then
-        if [[ -d "$HOME/.notebooklm/profiles/$prof" ]]; then
-          echo "ERROR: profile '$prof' exists but is not authenticated." >&2
-        else
-          echo "ERROR: profile '$prof' does not exist." >&2
+      IFS=',' read -r -a prof_list <<< "$prof"
+      for p in "${prof_list[@]}"; do
+        auth_file="$HOME/.notebooklm/profiles/$p/storage_state.json"
+        if [[ ! -s "$auth_file" ]]; then
+          if [[ -d "$HOME/.notebooklm/profiles/$p" ]]; then
+            echo "ERROR: profile '$p' exists but is not authenticated." >&2
+          else
+            echo "ERROR: profile '$p' does not exist." >&2
+          fi
+          echo "  Log in with:  ./deploy/desktop_login.sh $p" >&2
+          echo "" >&2
+          nlm profile list >&2
+          exit 1
         fi
-        echo "  Log in with:  notebooklm -p $prof login --browser chrome" >&2
-        echo "" >&2
-        nlm profile list >&2
-        exit 1
-      fi
-      prof_args=(--profile "$prof")
-      refresh_args=(-p "$prof")
+      done
+
+      # summary_parallel.py drives one account at a time.
+      prof_args=(--profile "${prof_list[0]}")
+      refresh_args=(-p "${prof_list[0]}")
     fi
+
+    # Count finished artifacts of this kind. Comparing the count across a pass
+    # is what separates "the daily quota is spent, wait it out" from "still
+    # producing, go again now" -- the rate-limit error text alone cannot.
+    export CCNP_COUNT_FILE="summary_th.md"
+    done_count() {
+      "$PY" - <<'PY'
+import os
+from cert_config import OUTPUT_DIR, SLIDE_FORMATS, TOPICS
+from run import topic_to_slug
+
+name = os.environ["CCNP_COUNT_FILE"]
+if name == "slide":
+    name = f"slide.{SLIDE_FORMATS[0]}"
+n = 0
+for t in TOPICS:
+    p = os.path.join(OUTPUT_DIR, f"{t['id']}_{topic_to_slug(t['topic'])}", name)
+    if os.path.exists(p) and os.path.getsize(p) > 0:
+        n += 1
+print(n)
+PY
+    }
 
     log="$LOG_DIR/${cmd//-/_}_$(stamp).log"
     echo "-> logging to $log"
     attempt=0
+    idle=0
+    # Passes of zero progress before stopping; each idle pass waits 15-30 min,
+    # so 48 is roughly a day. Set IDLE_GIVE_UP=0 on a box that stays up to
+    # keep waiting forever -- the point of leaving it running is to be awake
+    # whenever the quota window happens to refill.
+    IDLE_GIVE_UP="${IDLE_GIVE_UP:-48}"
     while :; do
       attempt=$((attempt + 1))
+      before="$(done_count)"
       echo ""
-      echo "===== pass $attempt (${workers} workers${prof:+, profile $prof}) ====="
+      echo "===== pass $attempt (${workers} workers${prof:+, profile $prof}) -- ${before} done ====="
       "$PY" -u "$script" --workers "$workers" "${prof_args[@]}" 2>&1 | tee -a "$log"
+      after="$(done_count)"
 
       if tail -n 5 "$log" | grep -qE 'Nothing to do|0 still pending'; then
         echo ""
@@ -189,27 +249,52 @@ case "$cmd" in
         break
       fi
       # A Python traceback means the script itself is broken (bad argument,
-      # missing file). Retrying that just reprints the same crash 30 times.
+      # missing file). Retrying that just reprints the same crash forever.
       if tail -n 20 "$log" | grep -q '^Traceback (most recent call last)'; then
         echo ""
         echo "===== crashed -- not a quota problem, see the traceback above ====="
         break
       fi
-      if (( attempt >= 30 )); then
-        echo "===== 30 passes without finishing -- check $log ====="
+
+      if (( after > before )); then
+        idle=0
+        wait_s=60
+        echo "===== +$((after - before)) this pass, ${after} done -- continuing ====="
+      else
+        # Nothing came out, so the daily quota is spent. Quota windows refill
+        # over hours; retrying in seconds just burns requests against a wall.
+        idle=$((idle + 1))
+        if (( idle < 3 )); then wait_s=900; else wait_s=1800; fi
+        echo "===== no progress (idle x${idle}) -- quota looks spent, waiting $((wait_s / 60)) min ====="
+        if (( IDLE_GIVE_UP > 0 && idle >= IDLE_GIVE_UP )); then
+          echo "===== ${IDLE_GIVE_UP} idle passes with no progress -- stopping, check $log ====="
+          break
+        fi
+      fi
+
+      # Refresh every account in play, not just the first: with several
+      # driving one notebook, one expired session must not end the run while
+      # the others are still good.
+      refreshed=0
+      if [[ -n "$prof" ]]; then
+        for p in "${prof_list[@]}"; do
+          nlm -p "$p" auth refresh >/dev/null 2>&1 && refreshed=$((refreshed + 1))
+        done
+      else
+        nlm auth refresh >/dev/null 2>&1 && refreshed=1
+      fi
+      if (( refreshed == 0 )); then
+        echo "no account could refresh its session -- sign in again:"
+        echo "    ./deploy/desktop_login.sh ${prof_list[0]:-default}"
         break
       fi
-      echo ""
-      echo "===== refreshing auth and continuing ====="
-      nlm "${refresh_args[@]}" auth refresh \
-        || { echo "run: notebooklm ${prof:+-p $prof }login --browser chrome"; break; }
-      sleep 5
+      sleep "$wait_s"
     done
     ;;
 
-  summary-once|slides-once)
+  summary-once)
     # single pass, no auto-resume (for debugging)
-    script="summary_only.py"; [[ "$cmd" == slides-once ]] && script="slides_only.py"
+    script="summary_only.py"
     if [[ $# -gt 0 ]]; then
       run_logged "${cmd}" "$script" --start-id "$1"
     else
@@ -228,15 +313,18 @@ case "$cmd" in
   status)
     "$PY" - <<'PY'
 import os
-from topics import TOPICS
+from cert_config import OUTPUT_DIR, SLIDE_FORMATS, TOPICS
 from run import topic_to_slug
 
-FILES = ("summary_th.md", "slide.pdf", "slide.pptx", "audio.mp3", "flashcards.json")
+# Only count the slide formats this cert actually downloads, otherwise a
+# pdf-only cert would always look permanently half-finished.
+FILES = ("summary_th.md", *(f"slide.{f}" for f in SLIDE_FORMATS),
+         "audio.mp3", "flashcards.json")
 counts = dict.fromkeys(FILES, 0)
 incomplete = []
 
 for t in TOPICS:
-    folder = os.path.join("output", f"{t['id']}_{topic_to_slug(t['topic'])}")
+    folder = os.path.join(OUTPUT_DIR, f"{t['id']}_{topic_to_slug(t['topic'])}")
     missing = []
     for f in FILES:
         p = os.path.join(folder, f)
@@ -271,7 +359,8 @@ PY
 import asyncio, os
 from notebooklm import NotebookLMClient
 
-NB = os.environ["NOTEBOOK_ID"]
+import cert_config
+NB = cert_config.notebook_id()
 
 async def main():
     async with NotebookLMClient.from_storage() as client:
@@ -335,11 +424,15 @@ PY
         echo "$m: MISSING"
       fi
     done
-    echo "NOTEBOOK_ID: ${NOTEBOOK_ID:0:8}..."
+    echo "CERT: $CERT"
+    echo "$NB_ENV: ${!NB_ENV:0:8}..."
     ;;
 
   watch)
-    watch -n 30 "ls $ROOT/output/*/summary_th.md 2>/dev/null | wc -l; ls -t $ROOT/output/ | head -3"
+    # Follow the active cert's directory, not a hardcoded output/ -- otherwise
+    # a CERT=ccnp_v2 run looks permanently stuck at zero.
+    outdir="$("$PY" -c 'import cert_config; print(cert_config.OUTPUT_DIR)')"
+    watch -n 30 "ls $ROOT/$outdir/*/summary_th.md 2>/dev/null | wc -l; ls -t $ROOT/$outdir/ | head -3"
     ;;
 
   *)
@@ -347,16 +440,20 @@ PY
 ccnp -- CCNP ENCOR study-pack generator
 
 Generation (long running; logs land in logs/):
-  ./ccnp summary-fast [workers]   summaries, N at a time (default 4)  <- fastest
-  ./ccnp slides-fast  [workers]   slide decks, N at a time (default 3) <- fastest
+  ./ccnp slides [profiles]        one slide cycle: request, collect, sweep
+  ./ccnp summary-fast [workers]   summaries, N at a time (default 4)
   ./ccnp summary [start-id]       summaries, one at a time  (~3-4 h)
-  ./ccnp slides  [start-id]       slide decks, one at a time (~5-6 h)
+
+  Slides normally run themselves -- `systemctl enable --now
+  slides-cycle@ccnp_v2.timer` fires a cycle every 20 minutes. Each cycle
+  records every request in v2/ledger.json before making it, so a crash or a
+  reboot costs one cycle, never a requested deck.
   ./ccnp topic <id> [--summary-only]
                                   redo ONE topic; old files move to _prev/
 
-  The -fast runners skip topics that are already done, so just run them
-  again after any stop -- no --start-id bookkeeping. The sequential ones
-  resume by id instead:
+  Everything skips work that is already on disk, so re-running after any
+  stop is safe -- no --start-id bookkeeping for slides. The sequential
+  summary runner resumes by id instead:
       ./ccnp summary 03_05
 
 Inspect:

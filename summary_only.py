@@ -4,22 +4,24 @@ import re
 import sys
 from notebooklm import NotebookLMClient
 
-NOTEBOOK_ID = os.environ.get("NOTEBOOK_ID")
-if not NOTEBOOK_ID:
-    print("ERROR: NOTEBOOK_ID environment variable not set (see .env.example).")
-    sys.exit(1)
-OUTPUT_DIR = "output"
 SLEEP_BETWEEN_TOPICS = 10
 RETRY_LIMIT = 2
 
-from run import TOPICS  # noqa: E402  (reuse the same 68-topic list)
+# run.py resolves these from cert_config, so CERT=ccna redirects the whole
+# script -- topic list, output folder, notebook and exam name -- at once.
+from run import (  # noqa: E402
+    EXAM_NAME,
+    NOTEBOOK_ID,
+    OUTPUT_DIR,
+    TOPICS,
+)
 
-# Reuse the hardened auth handling from slides_only.py rather than keeping a
+# Reuse the hardened auth handling from nlm_common.py rather than keeping a
 # second, weaker copy here: is_auth_error walks the exception chain (library
 # errors bury the real "Unauthenticated" RPCError in .cause), and the
 # keepalive refreshes the token immediately then every ~13 min, which a
 # multi-hour summary run needs just as much as a slide run does.
-from slides_only import (  # noqa: E402
+from nlm_common import (  # noqa: E402
     AuthExpiredError,
     auth_keepalive_loop,
     is_auth_error,
@@ -34,7 +36,7 @@ def topic_to_slug(topic: str) -> str:
 
 
 def build_focus_prompt(topic: str) -> str:
-    return f"""ฉันต้องการเรียนเฉพาะหัวข้อนี้จากเนื้อหา CCNP ENCOR 350-401 แบบละเอียดที่สุด:
+    return f"""ฉันต้องการเรียนเฉพาะหัวข้อนี้จากเนื้อหา {EXAM_NAME} แบบละเอียดที่สุด:
 
 หัวข้อ: {topic}
 
@@ -46,7 +48,7 @@ def build_focus_prompt(topic: str) -> str:
 3. ตัวอย่าง config จริงบน Cisco IOS / IOS-XE (ถ้ามี) — ใส่คำสั่งจริงพร้อมอธิบายแต่ละบรรทัดว่าทำอะไร และคำสั่ง verify/troubleshoot ที่เกี่ยวข้อง (show command, debug command)
 4. ข้อแตกต่าง/เปรียบเทียบกับเทคโนโลยีใกล้เคียง (ถ้ามี) — เช่นถ้าเป็น protocol ให้เทียบกับ protocol อื่นในกลุ่มเดียวกัน
 5. ข้อผิดพลาดที่พบบ่อย (Common pitfalls) ที่มักทำให้ติดตอนสอบหรือตอนทำงานจริง
-6. Key points ที่ต้องจำสำหรับสอบ CCNP ENCOR 350-401 — สรุปเป็น bullet สั้นกระชับท้ายสุด
+6. Key points ที่ต้องจำสำหรับสอบ {EXAM_NAME} — สรุปเป็น bullet สั้นกระชับท้ายสุด
 
 รูปแบบการเขียน (สำคัญมาก ทำตามให้ครบ):
 - **ห้ามใส่เลขอ้างอิงท้ายประโยคเด็ดขาด** เช่น [1], [2, 3], [6-13] — เขียนเป็นเนื้อความล้วน ๆ ให้อ่านลื่น
