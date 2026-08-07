@@ -1,8 +1,15 @@
 # รันบนเครื่อง 24 ชม.
 
-เหตุผลที่ย้าย: quota ของ NotebookLM ผูกกับ **notebook** และ refill เป็นช่วงๆ
-(reset ประมาณตี 2–3) เครื่องที่เปิดค้างไว้จะรับ quota รอบใหม่ได้ทันทีโดยไม่ต้อง
-มีคนมานั่งกดรันใหม่ — ไม่ได้ทำให้ quota เยอะขึ้น แค่ไม่เสียรอบเปล่า
+เหตุผล: NotebookLM quota **เติมกลับทีละนิดตลอดเวลา** ไม่ใช่รีเซ็ตครั้งเดียวต่อวัน
+(วัดได้ประมาณ 2-6 หัวข้อ/ชั่วโมง ต่อบัญชี ขึ้นกับ tier) เครื่องที่เปิดค้างไว้จะคว้า
+โควตาได้ทันทีที่มันเติม — ไม่ได้ทำให้ quota เยอะขึ้น แค่ไม่เสียรอบเปล่า
+
+ตัวรันคือ [`slides_v2.py`](../slides_v2.py): เขียน `task_id` ลง
+`<cert>/ledger.json` **ก่อน**ขอไฟล์เสมอ ต่อให้เครื่องดับหรือรอบถูกฆ่ากลางทาง
+ก็ไม่มีการสั่งซ้ำ ระบบนี้ถูกออกแบบมาแทนของเดิม (`slides_only.py` /
+`slides_parallel.py`, ถูกลบไปแล้ว) ที่เชื่อคำตอบจาก API มากกว่าไฟล์บนดิสก์ —
+ผลคือ `wait_for_completion` timeout แล้วรายงานว่า artifact "หายไป" ทั้งที่
+สร้างสำเร็จ แล้วไปสั่งซ้ำหัวข้อเดิม 3-4 ครั้ง เผาโควตาที่แพงที่สุดไปกับของที่มีอยู่แล้ว
 
 ## ติดตั้งครั้งแรก
 
@@ -14,148 +21,135 @@ cd cert-study-generator
 ./deploy/remote_setup.sh
 ```
 
-**2. จาก workstation** — ส่ง `.env` + summary ที่ทำไปแล้ว (ไม่มี auth)
+**2. จาก workstation** — ส่ง `.env` (ไม่มี auth ในนั้น)
 
 ```bash
-./deploy/seed_remote.sh user@192.168.2.153
+./deploy/seed_remote.sh user@remote-host
 ```
 
-ส่งแค่ `.env` กับ `CCNA/output/` (3 MB) — **ไม่ส่ง** `output/` ของ CCNP v1 (2.7 GB)
-เพราะรอบนี้ CCNP สร้างใหม่ทั้งหมดจาก topic list v2 ลง `output_v2/`
-
-**2.5 login บนเครื่องนั้นเอง** (ต้องมีคนอยู่หน้าจอ/console)
+**3. login บนเครื่องนั้นเอง** (ต้องมีคนอยู่หน้าจอ/console จริงๆ)
 
 ```bash
-sudo ./deploy/desktop_login.sh default        # ทำซ้ำกับ account2..5 ถ้าต้องการตัวสำรอง
+sudo ./deploy/desktop_login.sh default
+sudo ./deploy/desktop_login.sh account2   # ทำซ้ำถ้าจะใช้หลายบัญชี
 ```
 
-⚠️ **ห้าม copy `storage_state.json` จากเครื่องอื่นมาใช้** — session ที่ copy ข้ามเครื่อง
-ตายภายใน ~1 ชม. 45 นาทีทุกครั้ง (วัดมาแล้ว 2 ครั้งเมื่อ 2026-08-02 เสียเวลาไปคืนหนึ่งเต็มๆ)
-ตัดสาเหตุอื่นออกหมดแล้ว ทั้งการใช้พร้อมกันสองเครื่อง, IP ขาออก และ quota
-ส่วน session ที่สร้างบนเครื่องเองรันยาว 3.5 ชม. โดยไม่มี auth error เลยแม้แต่ครั้งเดียว
+⚠️ **ห้าม copy `~/.notebooklm/profiles/*/storage_state.json` จากเครื่องอื่นมาวาง**
+— session ที่ถูก copy ข้ามเครื่องตายภายใน ~1-2 ชั่วโมงทุกครั้ง (วัดซ้ำ 2 ครั้งแล้ว
+ผลตรงกัน) ส่วน session ที่ login บนเครื่องนั้นเองอยู่ได้เป็นวัน — ต้อง login ใหม่
+ทุกเครื่อง ไม่มีทางลัด
 
-**3. ล้าง source เก่าก่อนเริ่ม CCNP v2**
+**4. ล้าง source เก่าถ้า notebook เคยใช้กับ pack อื่นมาก่อน**
 
-`certs/ccnp_v2.py` ใช้ notebook เดียวกับ v1 ซึ่งยังมี `[SRC xx_yy]` ที่ derive จาก
-summary ของ v1 ค้างอยู่ ถ้าไม่ลบ สไลด์ v2 จะดึงเนื้อหา v1 มาปนและกิน source limit
+`[SRC <id>]` เป็น source ชั่วคราวที่ผูกสไลด์กับหัวข้อเดียว — ถ้า notebook เคยมี
+sources จาก topic list เก่าที่ไม่ตรงกับตัวปัจจุบัน ต้องเคลียร์ก่อน ไม่งั้นสไลด์ใหม่
+อาจดึงเนื้อหาเก่ามาปน:
 
 ```bash
 CERT=ccnp_v2 ./ccnp clean-src          # dry run -- ดูก่อนว่าจะลบอะไร
 CERT=ccnp_v2 ./ccnp clean-src --yes
 ```
 
-**4. ติดตั้ง service**
+(ปกติไม่ต้องทำเอง — `slides_v2.py` กวาด source ที่ใช้จบแล้วทุกรอบอัตโนมัติ ข้อนี้
+ใช้แค่ตอนตั้งเครื่องใหม่ครั้งแรกหรือ notebook มีของเก่าปนมา)
+
+**5. ติดตั้ง service + timer**
 
 ```bash
-sudo cp deploy/cert-*@.service /etc/systemd/system/
-sudo sed -i "s|__USER__|$USER|; s|__REPO__|$PWD|" /etc/systemd/system/cert-*@.service
+sudo cp deploy/slides-cycle@.{service,timer} /etc/systemd/system/
+sudo sed -i "s|__USER__|$USER|; s|__REPO__|$PWD|" /etc/systemd/system/slides-cycle@.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now cert-summary@ccna       # ต่อจาก 190/226
-sudo systemctl enable --now cert-summary@ccnp_v2    # เริ่มใหม่ 0/266
+sudo systemctl enable --now slides-cycle@ccnp_v2.timer
 ```
 
-## สลับ summary → slides อัตโนมัติ
+ตั้งได้หลาย cert พร้อมกัน (คนละ notebook คนละ quota pool, ไม่แย่งกัน):
 
 ```bash
-sudo cp deploy/cert-handover.{service,timer} /etc/systemd/system/
-sudo sed -i "s|__USER__|$USER|; s|__REPO__|$PWD|" /etc/systemd/system/cert-handover.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now cert-handover.timer
+sudo systemctl enable --now slides-cycle@ccna.timer
 ```
 
-`handover.sh` เช็คทุก 15 นาทีว่าเครื่องควรทำอะไรอยู่ แบ่งเป็น 2 เฟส:
+## กลไกการทำงาน
 
-**เฟส A — summary ของทุก cert พร้อมกัน** (ถูก เร็ว และเป็นวัตถุดิบของทุกอย่าง)
+`slides-cycle@.timer` ยิง `slides-cycle@.service` ทุก 20 นาที (`OnBootSec=5min`,
+`Persistent=true` — พลาดรอบเพราะเครื่องดับก็ยิงชดเชยทันทีที่บูตกลับมา) แต่ละรอบ
+เป็น **oneshot** ไม่ใช่ daemon ค้าง: อ่านดิสก์ + ledger ใหม่ทุกครั้ง ไม่มี state
+ในหน่วยความจำที่หายได้ ทำ 4 อย่างแล้วจบ:
 
-| สภาพที่เจอ | ทำอะไร |
-|---|---|
-| summary ยังไม่ครบ + unit หยุด | start กลับ (กันกรณี crash แล้วเงียบข้ามคืน) |
-| summary ครบ | ปิด unit ของ cert นั้น |
+1. **ปล่อยของค้าง** — ถ้ารอบก่อนถูกฆ่ากลางทาง (`state=requesting`/`sourcing`)
+   ปล่อย source นั้นคืนให้ sweep เก็บ แล้วอนุญาตให้สั่งใหม่
+2. **สั่งสร้าง** — ไล่ทีละบัญชีจนถูกปฏิเสธ 2 ครั้งติด แล้วสลับบัญชีถัดไป จด
+   `task_id` ลง ledger ทันทีที่สั่งสำเร็จ (ก่อนขอไฟล์)
+3. **เก็บสไลด์** — โหลดไฟล์ของหัวข้อที่มี `task_id` ค้างจากรอบก่อนๆ
+   ยังไม่พร้อมก็ปล่อยไว้ ไม่สั่งใหม่ ไม่ถามซ้ำเกินจำเป็น
+4. **เก็บกวาด** — ลบ `[SRC]` source กับ artifact ที่ใช้จบแล้ว
 
-**เฟส B — slides ทีละ cert ตาม `SLIDE_ORDER` และเริ่มต่อเมื่อ summary ครบทุก cert**
-
-ค่า default คือ `SLIDE_ORDER="ccnp_v2 ccna"` → CCNP v2 ได้คิวก่อน CCNA รอ
-เหตุผลที่ต้องเรียงคิวไม่ใช่รันขนาน: artifact rate limit ไม่ได้แยกตาม notebook
-สะอาดๆ สองสายจะแย่งกันจนได้ครึ่งๆ ทั้งคู่ ทำทีละตัวได้ pack ที่ใช้งานได้จริงเร็วกว่า
-
-ถ้าจะสลับคิว แก้ที่ `Environment=SLIDE_ORDER=...` ใน `cert-handover.service`
-
-### auth ตาย → สลับบัญชีเอง
-
-handover ตรวจ auth ก่อน restart ทุกครั้งที่เจอ unit ตายทั้งที่ยังมีงานค้าง ถ้า session
-ของบัญชีที่ใช้อยู่เสีย มันจะไล่หาบัญชีอื่นใน `~/.notebooklm/profiles/` ที่ยัง `ok`
-แล้วเขียนลง `.active-profile` + restart unit ที่กำลังรันให้ใช้บัญชีใหม่
-
-```
-profile 'account2' failed auth -- looking for a live account
-!!! FAILOVER: 'account2' is dead, switching to 'default'
-ccnp_v2: summaries stopped with 194 left -- restarting
-```
-
-unit อ่านไฟล์นี้ผ่าน `EnvironmentFile=-<repo>/.active-profile` แล้วส่งต่อเป็น argument
-(`./ccnp summary-fast 4 default`) ถ้าไม่มีไฟล์ = ใช้ profile default ตามเดิม
-
-**เสียเวลาแค่ 1 timer tick (15 นาที) แทนที่จะค้างทั้งคืน** — จะพังยาวก็ต่อเมื่อตายครบทุกบัญชี
-ซึ่งเป็นตอนเดียวที่ยังต้องมีคนมา re-login
-
-### ถ้าตายครบทุกบัญชี
-
-session หมดอายุกับ quota หมด หน้าตาเหมือนกันจากมุมของ systemd — CLI เจอ `auth refresh`
-fail แล้ว `break` ออกมาด้วย exit 0 ทำให้ `Restart=on-failure` ไม่ทำงาน เครื่องเลยดูเหมือน
-ยังยุ่งอยู่ทั้งที่ restart แล้วพังใน 3 วินาทีทุก 15 นาที (เสียไป 8 ชม. เมื่อ 2026-08-02)
-
-ถ้าไล่ครบทุก profile แล้วไม่มีตัวไหนผ่าน handover จะไม่ restart ให้เปล่าๆ
-แต่เขียนเตือนลง journal แทน:
-
-```bash
-journalctl -u cert-handover.service | grep "AUTH DEAD"
-```
-
-พอ re-login แล้ว copy `storage_state.json` ขึ้นมา timer รอบถัดไปเดินต่อเอง ไม่ต้องสั่งอะไร
-
-เหตุผลที่ไม่ตั้งเป็นเวลาตายตัว (เช่น ตี 5): ถ้าเดาเร็วไป slides จะไปแย่ rate limit กับ
-summary ของ notebook เดียวกัน แล้วตัวตรวจ "ไม่มี progress = quota หมด" จะอ่านผิด
-ถ้าเดาช้าไปเครื่องก็ว่างเปล่าหลาย ชม. — นับไฟล์เอาไม่มีทางผิด
-
-ทั้ง `cert-summary@` และ `cert-slides@` ใช้ `Restart=on-failure` (ไม่ใช่ `always`)
-เพื่อให้ตอนทำครบแล้ว unit หยุดสนิท แล้ว handover เป็นคนพาไป stage ถัดไป
+**ทำไมทีละบัญชี ไม่ใช่หลายบัญชีพร้อมกัน:** ลองแล้วพบว่ายิงพร้อมกันดูดโควตาที่
+เพิ่งเติมหมดใน 30 วินาที แล้วทุกบัญชีตันพร้อมกัน — ทีละบัญชีได้โควตารวมเท่ากัน
+แต่ไม่มีการแย่งกันเปล่าๆ
 
 ## กติกาการรันพร้อมกัน
 
-- **cert เดียวกัน ห้ามรัน summary กับ slides พร้อมกัน** — แย่ง rate limit ของ notebook
-  เดียวกัน และทำให้ตัวตรวจ "ไม่มี progress = quota หมด" อ่านผิด
-- **cert คนละตัว รันพร้อมกันได้** — CCNA ใช้ `NOTEBOOK_ID_CCNA`, CCNP ใช้ `NOTEBOOK_ID`
-  คนละ quota pool
-- เสร็จ summary ของ cert ไหนแล้วค่อยสลับไป slides ของ cert นั้น:
+- **notebook เดียวกัน ห้ามมีมากกว่า 1 process ยิงพร้อมกัน** — `slides_v2.py` มี lock
+  ไฟล์ (`<cert>/.slides.lock`) กันเรื่องนี้อยู่แล้ว ถ้าเจอ process ที่ pid ตายแล้วจริง
+  lock จะถูกเคลียร์อัตโนมัติในรอบถัดไป
+- **cert คนละตัว (คนละ notebook) รันพร้อมกันได้** — ไม่แย่ง quota กัน
+- **อย่ารัน `./ccnp slides` มือ พร้อมกับที่ timer ยังทำงานอยู่** — หยุด timer ก่อน:
+  ```bash
+  sudo systemctl stop slides-cycle@ccnp_v2.timer slides-cycle@ccnp_v2.service
+  # ... รันมือ ...
+  sudo systemctl start slides-cycle@ccnp_v2.timer
+  ```
+
+## ดูความคืบหน้า / เช็คสุขภาพ
 
 ```bash
-sudo systemctl disable --now cert-summary@ccna
-sudo systemctl enable  --now cert-slides@ccna
+# มีกี่ใบแล้ว
+ls <cert>/output/*/slide.pdf | wc -l
+
+# กำลังทำอะไรอยู่ บัญชีไหน
+journalctl -u slides-cycle@ccnp_v2 --since -30min --no-pager
+
+# รอบถัดไปกี่โมง
+systemctl list-timers slides-cycle@ccnp_v2.timer --no-pager
+
+# ledger กับ source ต้องตรงกัน (ถ้าไม่ตรง = มีอะไรรั่ว)
+python3 -c "
+import json, collections
+d = json.load(open('v2/ledger.json'))
+print(dict(collections.Counter(v.get('state') for v in d.values())))
+print('live sources:', sum(1 for v in d.values() if v.get('source_id')))
+"
+CERT=ccnp_v2 ./ccnp sources
 ```
 
-## ดูความคืบหน้า
+**เกณฑ์ปกติ:** `live sources` ในคำสั่งบนต้องเท่ากับ `[SRC] derived` ในคำสั่งล่าง
+ถ้าไม่ตรงหรือ `total` ไต่ขึ้นเรื่อยๆ (ควรนิ่งใกล้ตัวเลข reference material) ให้รัน
+`CERT=ccnp_v2 ./ccnp clean-src --yes` เพื่อล้าง
 
-```bash
-CERT=ccnp_v2 ./ccnp status
-journalctl -u cert-summary@ccnp_v2 -f
-tail -f logs/summary_fast_*.log
-```
+## Auth ตายกลางทาง
+
+ถ้าทุกบัญชีถูกปฏิเสธจนหมด service จะจบรอบตามปกติโดยไม่ได้อะไร (ไม่ใช่ error —
+เป็นแค่ "ยังไม่มีโควตา" ) แต่ถ้า **session หมดอายุจริง** (ไม่ใช่แค่โควตาหมด)
+`slides_v2.py` จะ log ชัดเจนว่าบัญชีไหน auth พังและหยุดพยายามกับบัญชีนั้นในรอบนั้น
+ถ้าตายครบทุกบัญชี ต้อง login ใหม่ตามขั้นตอนข้อ 3 ด้านบน — เข้าเครื่องเองเท่านั้น
+ทำจากระยะไกลด้วย copied cookies ไม่ได้ (อ่านเหตุผลด้านบน)
 
 ## ดึงผลลัพธ์กลับมา build เว็บ
 
-เครื่อง 24 ชม. เป็นเจ้าของ output ตัวจริง เวลาจะ deploy ค่อยดึงกลับ:
+เครื่อง 24 ชม. เป็นเจ้าของ output ตัวจริง เวลาจะ deploy ค่อยดึงกลับ — ถ้าใช้
+Windows มี [`deploy-site.ps1`](../deploy-site.ps1) ทำให้ทั้งหมดในคำสั่งเดียว
+(ดึง + build + deploy) ไม่ต้องทำตามด้านล่าง:
 
 ```bash
-rsync -az user@192.168.2.153:~/cert-study-generator/output_v2/ ./output_v2/
-rsync -az user@192.168.2.153:~/cert-study-generator/CCNA/output/ ./CCNA/output/
+rsync -az user@remote-host:~/cert-study-generator/v2/output/ ./v2/output/
+python build_site.py && python build_dist.py
+npx wrangler pages deploy v2/dist --project-name your-project --branch main
 ```
 
 ## หมายเหตุ
 
-- `IDLE_GIVE_UP=0` ใน unit = ไม่ยอมแพ้ ต่อให้ quota หมดข้ามวัน (ค่า default 48 pass
-  ≈ 24 ชม. เหมาะกับเครื่องที่ปิดๆ เปิดๆ ไม่ใช่เครื่องนี้)
-- `Restart=on-failure` เผื่อ crash/OOM/รีบูต — loop ของ CLI จัดการ quota กับ auth refresh
-  เองอยู่แล้ว ส่วนตอนทำงานครบ unit ต้องหยุดสนิทเพื่อให้ handover พาไป stage ถัดไป
-  (ถ้าใช้ `always` จะ restart วนไม่รู้จบและไม่มีวันสลับไป slides)
+- `TimeoutStartSec=3h` ใน service เป็นตาข่ายกันค้าง ไม่ใช่ตัวคุมจังหวะ — รอบปกติ
+  จบใน 10-15 นาทีเสมอ (2 refusal × ~90 วิ ต่อบัญชี × จำนวนบัญชี) ถ้ารอบไหนกิน
+  เวลาเป็นชั่วโมงคือมีอะไรผิดปกติ ให้เช็ค journal
 - ไฟล์ `~/.notebooklm/profiles/*/storage_state.json` คือ session cookie ของ Google
-  `seed_remote.sh` ตั้ง `chmod go-rwx` ให้แล้ว อย่าเอาขึ้น repo หรือ share
+  — อย่าเอาขึ้น repo หรือแชร์ให้ใคร
