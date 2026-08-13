@@ -210,12 +210,23 @@ variable `CERT` หรือใช้ wrapper ที่มีให้:
 
 ```bash
 ./ccnp status              # cert เริ่มต้น (CCNP v2)
-CERT=ccna ./ccnp status     # ระบุตรง
-./ccna status               # หรือใช้ wrapper สั้นที่มีอยู่แล้ว: ccnp1, ccnp2, ccna, sec
+CERT=ccna ./ccnp status     # ระบุตรง -- ccna ไม่มี wrapper ของตัวเอง (ดูหมายเหตุด้านล่าง)
+./cc status                 # หรือใช้ wrapper สั้นที่มีอยู่แล้ว: ccnp1, ccnp2, cc, secplus, cissp
 ```
 
 wrapper ที่มีอยู่แล้วในนี้: `ccnp` (v2), `ccnp1` (v1/136 topics), `ccnp2` (=v2),
-`ccna`, `sec` (security pack: CC + Security+ + CISSP รวมกันเพื่อลดเนื้อหาซ้ำ)
+`cc` (ISC2 Certified in Cybersecurity), `secplus` (CompTIA Security+ SY0-701),
+`cissp` (ISC2 CISSP)
+
+**CCNA ไม่มี wrapper แบบ `./ccna`** — ชื่อนั้นชนกับโฟลเดอร์ข้อมูลจริงของ CCNA
+(`ccna/`, มี source PDF + output อยู่ข้างใน; บน filesystem ที่ไม่สนตัวพิมพ์เล็ก-ใหญ่
+มันคือโฟลเดอร์เดียวกับ `certs/ccna.py`'s `SITE_DIR = "CCNA"`) สร้างไฟล์ชื่อ `ccna`
+ทับไม่ได้ ใช้ `CERT=ccna ./ccnp <คำสั่ง>` แทน
+
+**`sec`** ยังอยู่แต่เป็น **legacy** — ชี้ไปที่ `certs/security.py` ซึ่งเป็น pack
+รวม CC+Security+/CISSP แบบเดิมที่ถูกแทนที่ด้วย `cc`/`secplus`/`cissp` แยกกันแล้ว
+(เหตุผล: สอนทุกอย่างที่ระดับความลึกเดียวกันหมดทำให้ผู้สอบ CC เจอเนื้อหาระดับ CISSP)
+เก็บไว้เผื่อ output เก่าที่ deploy ไปแล้วยังอยากอ้างอิง ไม่แนะนำให้ generate เพิ่ม
 
 ## โครงสร้างไฟล์ในโปรเจกต์
 
@@ -230,7 +241,7 @@ wrapper ที่มีอยู่แล้วในนี้: `ccnp` (v2), `cc
 | `build_site.py` | สร้าง `index.html` จากสิ่งที่มีอยู่ใน `<cert>/output/` |
 | `build_dist.py` | คัดลอกไฟล์ที่พร้อม deploy ไปที่ `<cert>/dist/` |
 | `deploy-site.ps1` | (Windows) ดึงจากเครื่องรีโมท → build → deploy ในคำสั่งเดียว |
-| `ccnp`, `ccnp1`, `ccnp2`, `ccna`, `sec` | CLI wrapper ต่อ cert |
+| `ccnp`, `ccnp1`, `ccnp2`, `cc`, `secplus`, `cissp`, `sec` (legacy) | CLI wrapper ต่อ cert |
 | `deploy/` | รัน 24 ชม. บนเครื่องอื่น — ดู `deploy/README.md` |
 | `clean_src_sources.py` | ลบ `[SRC ...]` source ชั่วคราวที่ค้างอยู่ (ปกติ `slides_v2.py` จัดการเองแล้ว ใช้กรณีฉุกเฉิน) |
 

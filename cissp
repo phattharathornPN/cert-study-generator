@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Thin alias: same tool as ./ccnp, different exam config (certs/cissp.py).
+exec env CERT=cissp "$(dirname "${BASH_SOURCE[0]}")/ccnp" "$@"
