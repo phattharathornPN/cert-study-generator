@@ -17,6 +17,13 @@ from cert_config import DIST_DIR, OUTPUT_DIR, SITE_DIR
 # NotebookLM in the first place.)
 SKIP_FILES = {"slide.pptx"}
 
+# Cloudflare Pages hard-rejects any single file over 25 MiB -- and rejects the
+# whole deploy when it does, not just that file. First hit: a slide.pdf came
+# back at 25.1 MiB from a topic with an unusually image-heavy deck. Skipping
+# the oversized file here keeps every other topic deployable instead of the
+# entire site being blocked on one slide deck NotebookLM happened to bloat.
+PAGES_MAX_FILE_BYTES = 25 * 1024 * 1024
+
 if os.path.exists(DIST_DIR):
     shutil.rmtree(DIST_DIR)
 os.makedirs(DIST_DIR)
@@ -26,6 +33,7 @@ shutil.copy(os.path.join(SITE_DIR, "index.html"), os.path.join(DIST_DIR, "index.
 dist_output = os.path.join(DIST_DIR, os.path.relpath(OUTPUT_DIR, SITE_DIR))
 total_bytes = 0
 n_files = 0
+skipped_oversized = []
 
 for root, dirs, files in os.walk(OUTPUT_DIR):
     rel = os.path.relpath(root, OUTPUT_DIR)
@@ -35,10 +43,18 @@ for root, dirs, files in os.walk(OUTPUT_DIR):
         if fname in SKIP_FILES:
             continue
         src = os.path.join(root, fname)
+        size = os.path.getsize(src)
+        if size > PAGES_MAX_FILE_BYTES:
+            skipped_oversized.append((os.path.join(rel, fname), size))
+            continue
         dst = os.path.join(dest_dir, fname)
         shutil.copy(src, dst)
-        total_bytes += os.path.getsize(src)
+        total_bytes += size
         n_files += 1
 
 print(f"dist/ built: {n_files} files, {total_bytes / 1024 / 1024:.1f} MB")
+if skipped_oversized:
+    print(f"SKIPPED {len(skipped_oversized)} file(s) over Cloudflare Pages' 25 MiB limit:")
+    for path, size in skipped_oversized:
+        print(f"  {path} ({size / 1024 / 1024:.1f} MiB) -- won't display on the site")
 print("Deploy with: npx wrangler pages deploy dist --project-name ccnp-encor-study")

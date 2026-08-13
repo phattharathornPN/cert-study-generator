@@ -29,3 +29,14 @@ SECTION_TITLES = {
     "07": "Automation and Assurance",
     "08": "Network Programmability",
 }
+
+
+from certs._shared import networking_slide_instructions, networking_summary_prompt
+
+
+def SLIDE_INSTRUCTIONS(topic: str) -> str:
+    return networking_slide_instructions(EXAM_NAME, topic)
+
+
+def SUMMARY_PROMPT(topic: str) -> str:
+    return networking_summary_prompt(EXAM_NAME, topic)

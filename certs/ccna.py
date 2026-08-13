@@ -46,6 +46,18 @@ SECTION_TITLES = {
     "20": "Automation and Programmability",
 }
 
+
+from certs._shared import networking_slide_instructions, networking_summary_prompt
+
+
+def SLIDE_INSTRUCTIONS(topic: str) -> str:
+    return networking_slide_instructions(EXAM_NAME, topic)
+
+
+def SUMMARY_PROMPT(topic: str) -> str:
+    return networking_summary_prompt(EXAM_NAME, topic)
+
+
 TOPICS = [
     # -- 01: Networking Concepts --
     {"id": "01_01", "topic": "What a Network Is: Components, Topologies and Terminology"},

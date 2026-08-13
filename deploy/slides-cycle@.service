@@ -18,7 +18,7 @@ WorkingDirectory=__REPO__
 Environment=CERT=%i
 # The allowance is per Google account, so the runner drains them in turn --
 # each until it refuses eight in a row, then the next.
-Environment=SLIDE_PROFILES=default,account2,account3,account4,account5
+Environment=SLIDE_PROFILES=default,account2,account3,account4,account5,account6
 # Cap the requests per cycle so a single cycle cannot spend a whole day's
 # allowance before the collect phase has had a chance to bring anything down.
 Environment=SLIDE_MAX_KICKOFF=25

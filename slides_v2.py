@@ -62,7 +62,7 @@ from notebooklm.exceptions import (
 from notebooklm.rpc.types import SlideDeckFormat, SlideDeckLength
 
 from run import NOTEBOOK_ID, OUTPUT_DIR, SLIDE_FORMATS, TOPICS, topic_to_slug
-from cert_config import EXAM_NAME, SITE_DIR
+from cert_config import EXAM_NAME, SITE_DIR, SLIDE_INSTRUCTIONS
 
 
 def is_auth_error(exc: BaseException) -> bool:
@@ -86,20 +86,12 @@ def is_auth_error(exc: BaseException) -> bool:
     return False
 
 
-def build_slide_instructions(topic: str) -> str:
-    return (
-        f'สร้างสไลด์เฉพาะหัวข้อ "{topic}" จากเนื้อหา {EXAM_NAME} เท่านั้น '
-        f"ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
-        f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
-        f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "
-        f"4) ตัวอย่างเดินข้อมูลแบบ step-by-step ด้วยค่าจำลองจริง (IP/MAC/เลข) "
-        f"อย่างน้อย 1 หน้าเต็ม แสดงลำดับขั้นตอนทั้งหมดในสถานการณ์เดียว ไม่ใช่แค่ diagram นามธรรม "
-        f"5) Key points ที่ต้องจำสำหรับสอบ "
-        f"ข้อควรระวังสำคัญ: ถ้าเนื้อหาอธิบายกลไกที่ทำงานโดยไม่พึ่ง CPU/Control Plane "
-        f"(เช่น hardware forwarding, ASIC, wire-speed, fast path) ห้ามวาด diagram ที่มีเส้นทาง "
-        f"ข้อมูลผ่าน CPU หรือ Route Processor เด็ดขาด เพราะจะขัดแย้งกับเนื้อหาที่อธิบายไว้เอง "
-        f"ตรวจสอบว่าทุก diagram สื่อสารตรงกับข้อความที่อธิบายจริง"
-    )
+# Slide instructions come from the active cert (certs/<cert>.py), not from
+# here. This used to be a single hardcoded template asking every cert for
+# "Cisco IOS / IOS-XE" config examples -- harmless for CCNP/CCNA, but it told
+# the AI to hunt for Cisco configs on CISSP governance topics too, since
+# Security shared this file. Each cert now owns the kind of worked example
+# that actually fits its exam.
 
 LEDGER_PATH = os.path.join(SITE_DIR, "ledger.json")
 LOCK_PATH = os.path.join(SITE_DIR, ".slides.lock")
@@ -269,7 +261,7 @@ async def kickoff_one(client, t: dict, ledger: dict) -> str:
             NOTEBOOK_ID,
             source_ids=[src.id],
             language="th",
-            instructions=build_slide_instructions(topic),
+            instructions=SLIDE_INSTRUCTIONS(topic),
             slide_format=SlideDeckFormat.DETAILED_DECK,
             slide_length=SlideDeckLength.DEFAULT,
         ),
@@ -440,8 +432,24 @@ async def kickoff_with(client, queue, ledger, label) -> str:
             await drop_source(client, ledger, t["id"], "error")
             outcome = "refused"
 
-        queue.pop(0)
-        refused_in_a_row = refused_in_a_row + 1 if outcome == "refused" else 0
+        if outcome == "refused":
+            # Leave it in the queue -- rotate it to the back rather than
+            # discarding it. A topic this account was refused on is exactly
+            # the kind of work the NEXT account should get a shot at; popping
+            # unconditionally here meant a refusal permanently removed the
+            # topic from this cycle's queue, so once the queue held no more
+            # topics than REFUSALS_BEFORE_NEXT_ACCOUNT, the "allowance spent,
+            # try the next account" handoff below had nothing left to hand
+            # over -- every account after the first was rotated through with
+            # an empty queue. That is why the last two topics of CCNP v2 sat
+            # refused by "default" alone for hours after account6 was added:
+            # accounts 2-6 were never actually tried on them.
+            refused_in_a_row += 1
+            queue.append(queue.pop(0))
+        else:
+            refused_in_a_row = 0
+            queue.pop(0)
+
         if refused_in_a_row >= REFUSALS_BEFORE_NEXT_ACCOUNT:
             print(f"  {label}: {refused_in_a_row} refusals in a row -- allowance spent",
                   flush=True)

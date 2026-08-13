@@ -4,6 +4,8 @@ import re
 import sys
 from notebooklm import NotebookLMClient
 
+import cert_config
+
 SLEEP_BETWEEN_TOPICS = 10
 RETRY_LIMIT = 2
 
@@ -35,29 +37,16 @@ def topic_to_slug(topic: str) -> str:
     return slug[:40]
 
 
+# Delegates to the active cert (certs/<cert>.py via cert_config), rather than
+# a prompt hardcoded here. This file's prompt used to be the ONLY summary
+# prompt every cert went through -- CCNP-flavored, right down to a literal
+# "CCNP" in the closing line -- and Security inherited it wholesale: 354 of
+# its first 357 generated summaries came back with a fabricated Cisco-config
+# section on topics (e.g. "Confidentiality") that have nothing to do with
+# routers. Every cert must define its own SUMMARY_PROMPT now; there is no
+# networking-flavored fallback to silently inherit.
 def build_focus_prompt(topic: str) -> str:
-    return f"""ฉันต้องการเรียนเฉพาะหัวข้อนี้จากเนื้อหา {EXAM_NAME} แบบละเอียดที่สุด:
-
-หัวข้อ: {topic}
-
-กรุณาสรุปเฉพาะหัวข้อนี้เป็นภาษาไทยแบบละเอียด (เขียนยาวได้เต็มที่ ไม่ต้องสั้น) โดยเรียงตามนี้:
-
-0. **TL;DR — สรุป 30 วินาที** (ขึ้นก่อนเพื่อนสุด) เขียน 3-5 bullet ที่ถ้าอ่านแค่นี้ก่อนเข้าห้องสอบก็ยังได้ประเด็นหลักครบ
-1. แนวคิดหลักและความสำคัญ — อธิบายว่ามันคืออะไร ใช้แก้ปัญหาอะไร และสำคัญต่อ enterprise network อย่างไร
-2. การทำงานโดยละเอียด (How it works) — อธิบายทุกขั้นตอน/state/process ที่เกี่ยวข้อง พร้อมยกตัวอย่างสถานการณ์จริงประกอบ ถ้าเป็นกระบวนการหลายขั้นให้เขียนเป็นลำดับเลข 1-2-3 พร้อมค่าจำลองจริง (IP/MAC/เลข port) ไม่ใช่พูดลอย ๆ
-3. ตัวอย่าง config จริงบน Cisco IOS / IOS-XE (ถ้ามี) — ใส่คำสั่งจริงพร้อมอธิบายแต่ละบรรทัดว่าทำอะไร และคำสั่ง verify/troubleshoot ที่เกี่ยวข้อง (show command, debug command)
-4. ข้อแตกต่าง/เปรียบเทียบกับเทคโนโลยีใกล้เคียง (ถ้ามี) — เช่นถ้าเป็น protocol ให้เทียบกับ protocol อื่นในกลุ่มเดียวกัน
-5. ข้อผิดพลาดที่พบบ่อย (Common pitfalls) ที่มักทำให้ติดตอนสอบหรือตอนทำงานจริง
-6. Key points ที่ต้องจำสำหรับสอบ {EXAM_NAME} — สรุปเป็น bullet สั้นกระชับท้ายสุด
-
-รูปแบบการเขียน (สำคัญมาก ทำตามให้ครบ):
-- **ห้ามใส่เลขอ้างอิงท้ายประโยคเด็ดขาด** เช่น [1], [2, 3], [6-13] — เขียนเป็นเนื้อความล้วน ๆ ให้อ่านลื่น
-- **ข้อ 4 (เปรียบเทียบ) ต้องทำเป็นตาราง Markdown เสมอ** คอลัมน์แรกคือหัวข้อที่เทียบ แล้วแยกคอลัมน์ตามเทคโนโลยี ห้ามเขียนเป็น bullet ยาว ๆ
-- ที่ไหนมีค่าตัวเลข/ตัวเปรียบเทียบหลายตัว (timer, port, metric, AD, LSA type, state) ให้ใช้ตาราง Markdown แทนการร่ายเป็นย่อหน้า
-- config ทุกชุดใส่ใน fenced code block ```cisco เสมอ พร้อม comment `!` อธิบายบรรทัดสำคัญ
-- ศัพท์เทคนิคคงภาษาอังกฤษไว้ วงเล็บไทยกำกับครั้งแรกที่เจอ แล้วครั้งต่อไปใช้อังกฤษล้วน ไม่ต้องวงเล็บซ้ำทุกครั้ง
-
-ตอบเฉพาะหัวข้อ "{topic}" เท่านั้น ไม่ต้องพูดถึงหัวข้ออื่น ไม่ต้องสรุปย่อเกินไป เขียนแบบเข้าใจง่ายสำหรับคนไทยที่เรียน CCNP"""
+    return cert_config.SUMMARY_PROMPT(topic)
 
 
 CITATION_RE = re.compile(r"[ \t]*\[\d+(?:\s*[,–-]\s*\d+)*\]")

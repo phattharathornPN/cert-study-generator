@@ -29,7 +29,7 @@ from notebooklm import NotebookLMClient
 # TOPICS comes via run.py (cert_config), not straight from topics.py, so
 # CERT=ccna actually switches the list instead of silently reusing CCNP's.
 from run import NOTEBOOK_ID, OUTPUT_DIR, TOPICS, topic_to_slug
-from nlm_common import AuthExpiredError, is_auth_error
+from nlm_common import AuthExpiredError, auth_keepalive_loop, is_auth_error
 from summary_only import CITATION_RE, build_focus_prompt, strip_citations
 
 DEFAULT_WORKERS = 4
@@ -134,25 +134,30 @@ async def main():
     sem = asyncio.Semaphore(workers)
     counter = {"done": 0, "failed": 0, "total": len(todo)}
 
-    async with NotebookLMClient.from_storage(profile=profile) as client:
-        tasks = [
-            asyncio.create_task(process_topic(client, t, sem, want_notes, counter))
-            for t in todo
-        ]
-        try:
-            await asyncio.gather(*tasks)
-        except AuthExpiredError as e:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            print(f"\nSTOPPED: {e}")
-            print(f"  {counter['done']} finished this pass.")
-            print("  Refresh auth and run again -- finished topics are skipped:")
-            print("      ./ccnp summary-fast")
-            sys.exit(2)
+    keepalive_task = asyncio.create_task(auth_keepalive_loop(profile))
 
-    print(f"\nDone: {counter['done']} written, {counter['failed']} failed, "
-          f"{len(pending_topics(None))} still pending overall.")
+    try:
+        async with NotebookLMClient.from_storage(profile=profile) as client:
+            tasks = [
+                asyncio.create_task(process_topic(client, t, sem, want_notes, counter))
+                for t in todo
+            ]
+            try:
+                await asyncio.gather(*tasks)
+            except AuthExpiredError as e:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                print(f"\nSTOPPED: {e}")
+                print(f"  {counter['done']} finished this pass.")
+                print("  Refresh auth and run again -- finished topics are skipped:")
+                print("      ./ccnp summary-fast")
+                sys.exit(2)
+
+        print(f"\nDone: {counter['done']} written, {counter['failed']} failed, "
+              f"{len(pending_topics(None))} still pending overall.")
+    finally:
+        keepalive_task.cancel()
 
 
 if __name__ == "__main__":

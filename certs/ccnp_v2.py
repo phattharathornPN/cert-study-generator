@@ -66,6 +66,18 @@ SECTION_TITLES = {
     "22": "Automation and Programmability",
 }
 
+
+from certs._shared import networking_slide_instructions, networking_summary_prompt
+
+
+def SLIDE_INSTRUCTIONS(topic: str) -> str:
+    return networking_slide_instructions(EXAM_NAME, topic)
+
+
+def SUMMARY_PROMPT(topic: str) -> str:
+    return networking_summary_prompt(EXAM_NAME, topic)
+
+
 TOPICS = [
     # -- 01: Enterprise Architecture and Design --
     # v1 had four topics (01_01/03/04/05) all free to explain the three-layer

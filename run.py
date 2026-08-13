@@ -19,6 +19,8 @@ from cert_config import (  # noqa: F401  (re-exported for downstream scripts)
     EXAM_NAME,
     OUTPUT_DIR,
     SLIDE_FORMATS,
+    SLIDE_INSTRUCTIONS,
+    SUMMARY_PROMPT,
     TOPICS,
     notebook_id,
 )
@@ -37,18 +39,10 @@ def topic_to_slug(topic: str) -> str:
     return slug[:40]
 
 
+# Delegates to the active cert -- see cert_config.SUMMARY_PROMPT for why
+# this file no longer carries its own (shorter, also Cisco-hardcoded) copy.
 def build_focus_prompt(topic: str) -> str:
-    return f"""ฉันต้องการเรียนเฉพาะหัวข้อนี้จากเนื้อหา {EXAM_NAME}:
-
-หัวข้อ: {topic}
-
-กรุณาสรุปเฉพาะหัวข้อนี้เป็นภาษาไทย โดยครอบคลุม:
-1. แนวคิดหลักและความสำคัญ
-2. การทำงาน (How it works)
-3. ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี
-4. Key points ที่ต้องจำสำหรับสอบ {EXAM_NAME}
-
-ตอบเฉพาะหัวข้อ "{topic}" เท่านั้น ไม่ต้องพูดถึงหัวข้ออื่น"""
+    return SUMMARY_PROMPT(topic)
 
 
 class AuthExpiredError(Exception):
@@ -121,19 +115,7 @@ async def process_topic(client, t: dict):
         lambda: client.artifacts.generate_slide_deck(
             NOTEBOOK_ID,
             language="th",
-            instructions=(
-                f'สร้างสไลด์เฉพาะหัวข้อ "{topic}" จากเนื้อหา {EXAM_NAME} เท่านั้น '
-                f"ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
-                f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
-                f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "
-                f"4) ตัวอย่างเดินข้อมูลแบบ step-by-step ด้วยค่าจำลองจริง (IP/MAC/เลข) "
-                f"อย่างน้อย 1 หน้าเต็ม แสดงลำดับขั้นตอนทั้งหมดในสถานการณ์เดียว ไม่ใช่แค่ diagram นามธรรม "
-                f"5) Key points ที่ต้องจำสำหรับสอบ "
-                f"ข้อควรระวังสำคัญ: ถ้าเนื้อหาอธิบายกลไกที่ทำงานโดยไม่พึ่ง CPU/Control Plane "
-                f"(เช่น hardware forwarding, ASIC, wire-speed, fast path) ห้ามวาด diagram ที่มีเส้นทาง "
-                f"ข้อมูลผ่าน CPU หรือ Route Processor เด็ดขาด เพราะจะขัดแย้งกับเนื้อหาที่อธิบายไว้เอง "
-                f"ตรวจสอบว่าทุก diagram สื่อสารตรงกับข้อความที่อธิบายจริง"
-            ),
+            instructions=SLIDE_INSTRUCTIONS(topic),
             slide_format=SlideDeckFormat.DETAILED_DECK,
             slide_length=SlideDeckLength.DEFAULT,
         ),
@@ -170,13 +152,10 @@ async def process_topic(client, t: dict):
         lambda: client.artifacts.generate_audio(
             NOTEBOOK_ID,
             language="th",
-            instructions=(
-                f'อธิบายเฉพาะหัวข้อ "{topic}" จากเนื้อหา {EXAM_NAME} เป็นภาษาไทย '
-                f"แบบเข้าใจง่าย ไม่ต้องพูดถึงหัวข้ออื่น โดยครอบคลุม: "
-                f"1) แนวคิดหลักและความสำคัญ 2) การทำงาน (How it works) "
-                f"3) ตัวอย่าง config จริง (Cisco IOS / IOS-XE) ถ้ามี "
-                f"4) Key points ที่ต้องจำสำหรับสอบ"
-            ),
+            # No per-cert AUDIO_INSTRUCTIONS hook exists (audio isn't part of
+            # any cert's active workflow) -- reusing SLIDE_INSTRUCTIONS keeps
+            # this cert-correct without inventing unused infrastructure.
+            instructions=SLIDE_INSTRUCTIONS(topic),
             audio_format=AudioFormat.DEEP_DIVE,
             audio_length=AudioLength.DEFAULT,
         ),
