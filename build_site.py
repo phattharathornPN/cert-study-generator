@@ -8,7 +8,7 @@ Then serve:                          python -m http.server 8000
 import json
 import os
 
-from cert_config import OUTPUT_DIR, SECTION_TITLES, SITE_DIR
+from cert_config import EXAM_NAME, OUTPUT_DIR, SECTION_TITLES, SITE_DIR
 
 
 topics = []
@@ -41,7 +41,7 @@ html = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
-<title>CCNP ENCOR 350-401 — สรุปภาษาไทย</title>
+<title>__EXAM_NAME__ — สรุปภาษาไทย</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";</script>
@@ -250,7 +250,7 @@ html = """<!DOCTYPE html>
 <div id="overlay" onclick="closeSidebar()"></div>
 <nav id="sidebar">
   <div id="sidebar-head">
-    <h1>CCNP ENCOR 350-401</h1>
+    <h1>__EXAM_NAME__</h1>
     <div class="sub">สรุปภาษาไทย · Slide · Audio</div>
     <div id="progress-wrap">
       <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
@@ -658,7 +658,7 @@ render('');
 </html>
 """
 
-html = html.replace("__MANIFEST__", manifest)
+html = html.replace("__MANIFEST__", manifest).replace("__EXAM_NAME__", EXAM_NAME)
 
 index_path = os.path.join(SITE_DIR, "index.html")
 os.makedirs(SITE_DIR, exist_ok=True)
